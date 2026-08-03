@@ -1,0 +1,186 @@
+name: Backend CI / CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# A newer push makes an in-flight run obsolete. Cancel it rather than pay for
+# both — except on main, where we want the deploy to finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    # Real Postgres, not SQLite. The no-double-booking rule uses an EXCLUDE
+    # constraint with btree_gist, which SQLite cannot express — testing
+    # against SQLite would pass a booking that production rejects.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: ona_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.local
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/ona_test
+      REDIS_URL: redis://localhost:6379/0
+      DJANGO_SECRET_KEY: ci-only-not-a-real-secret
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Enable btree_gist
+        # The extension the booking constraint depends on. Failing here is a
+        # clearer signal than a confusing migration error later.
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d ona_test \
+            -c 'CREATE EXTENSION IF NOT EXISTS btree_gist;'
+
+      - name: Django system checks
+        run: python manage.py check --fail-level WARNING
+
+      - name: Check for missing migrations
+        # Catches a model changed without makemigrations — which otherwise
+        # only surfaces as a failed deploy.
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Migrate
+        run: python manage.py migrate --noinput
+
+      - name: Run tests
+        run: pytest --cov=apps --cov=core --cov-report=term-missing
+
+  # ---------------------------------------------------------------------------
+  # Money safety. Separate job so it reports separately: if this fails, the
+  # commission split is wrong and someone gets paid the wrong amount.
+  # ---------------------------------------------------------------------------
+  money:
+    name: Money arithmetic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: No float arithmetic on money
+        # Amounts are integer pesewas everywhere. A float or Decimal in the
+        # payments app is a bug regardless of whether tests happen to pass.
+        run: |
+          if grep -rnE '\b(float|Decimal)\(' apps/payments/ \
+               --include='*.py' \
+               | grep -v 'hubtel.py' \
+               | grep -v 'test_'; then
+            echo "::error::float/Decimal used in apps/payments outside the Hubtel boundary."
+            echo "Money is stored and calculated as integer pesewas. Decimal is"
+            echo "permitted only in hubtel.py, where the value crosses into the"
+            echo "provider's decimal string format."
+            exit 1
+          fi
+          echo "OK — no float money arithmetic."
+
+      - name: Commission split invariants
+        # Runs without Django: money.py is deliberately free of framework
+        # dependencies so it can be checked in isolation.
+        run: |
+          python - <<'PY'
+          import sys, types, random
+          mod = types.ModuleType('django'); conf = types.ModuleType('django.conf')
+          class S: CURRENCY_MINOR_UNITS = 100
+          conf.settings = S(); mod.conf = conf
+          sys.modules['django'] = mod; sys.modules['django.conf'] = conf
+          sys.path.insert(0, '.')
+          from apps.payments.money import split_commission
+
+          # The figures shown on the designs must hold.
+          s = split_commission(125000, 15)
+          assert s.professional_pesewas == 106250, s
+          assert s.commission_pesewas == 18750, s
+
+          random.seed(0)
+          for _ in range(50000):
+              total = random.randint(0, 50_000_000)
+              pct = random.randint(0, 100)
+              sp = split_commission(total, pct)
+              # Must always reconcile: no money invented or lost.
+              assert sp.professional_pesewas + sp.commission_pesewas == total
+              # Rounding must never favour the platform.
+              assert sp.commission_pesewas <= total * pct / 100
+          print('OK — 50,000 splits reconcile, rounding favours the professional.')
+          PY
+
+  # ---------------------------------------------------------------------------
+  # Deploys. develop → staging, main → production.
+  # ---------------------------------------------------------------------------
+  deploy-staging:
+    name: Deploy → staging
+    needs: [test, money]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g @railway/cli
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
+        run: railway up --service ona-backend --environment staging --detach
+
+  deploy-production:
+    name: Deploy → production
+    needs: [test, money]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    # Set this environment to require manual approval in GitHub settings.
+    # Production moves real money; a merge should not deploy unattended.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm install -g @railway/cli
+      - name: Deploy
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
+        run: railway up --service ona-backend --environment production --detach
+
+      - name: Summary
+        run: |
+          echo "### Backend deployed" >> $GITHUB_STEP_SUMMARY
+          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "By: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
