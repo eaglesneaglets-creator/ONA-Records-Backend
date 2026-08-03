@@ -48,6 +48,16 @@ _railway_domain = config('RAILWAY_PUBLIC_DOMAIN', default='')
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
 
+# Railway's health prober sends Host: healthcheck.railway.app, which is not
+# the public domain and is not in RAILWAY_PUBLIC_DOMAIN. Without this the
+# probe gets a 400 DisallowedHost and the deploy is marked unhealthy even
+# though the app is running correctly.
+#
+# This is safe to allow unconditionally: the prober reaches the container
+# over Railway's private network, and the health view returns no data that
+# is not already public.
+ALLOWED_HOSTS.append('healthcheck.railway.app')
+
 CORS_ALLOWED_ORIGINS = [o for o in config('CORS_ALLOWED_ORIGINS', cast=Csv(), default='') if o]
 CSRF_TRUSTED_ORIGINS = [o for o in config('CSRF_TRUSTED_ORIGINS', cast=Csv(), default='') if o]
 

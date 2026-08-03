@@ -25,6 +25,10 @@ _railway_domain = config('RAILWAY_PUBLIC_DOMAIN', default='')
 if _railway_domain:
     ALLOWED_HOSTS.append(_railway_domain)
 
+# Railway's health prober sends Host: healthcheck.railway.app over the private
+# network. Without it here the probe 400s and every deploy is marked unhealthy.
+ALLOWED_HOSTS.append('healthcheck.railway.app')
+
 # ---------------------------------------------------------------------------
 # Database — Railway provides DATABASE_URL; never set it by hand there.
 # ---------------------------------------------------------------------------
