@@ -10,6 +10,29 @@ set -euo pipefail
 echo "==> DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-UNSET}"
 echo "==> PORT=${PORT:-8000}"
 
+# When the settings module is missing, print what the container DID receive.
+# Railway distinguishes project-level shared variables from service-level
+# ones, and a shared variable does not reach a service unless it is
+# explicitly referenced — so "I set it" and "the container has it" are
+# different claims. This shows which is true.
+#
+# Only variable NAMES are printed, never values: this log is not a safe
+# place for SECRET_KEY or database credentials.
+if [ -z "${DJANGO_SETTINGS_MODULE:-}" ]; then
+    echo "--- environment variable names visible to this container ---"
+    env | cut -d= -f1 | sort | tr '\n' ' '
+    echo ""
+    echo "--- Railway-injected variables (these prove which env we are in) ---"
+    echo "    RAILWAY_ENVIRONMENT_NAME=${RAILWAY_ENVIRONMENT_NAME:-<absent>}"
+    echo "    RAILWAY_SERVICE_NAME=${RAILWAY_SERVICE_NAME:-<absent>}"
+    if [ -n "${DATABASE_URL:-}" ]; then
+        echo "    DATABASE_URL=<set>"
+    else
+        echo "    DATABASE_URL=<absent>"
+    fi
+    echo "-----------------------------------------------------------"
+fi
+
 # A deployed container must never fall back to manage.py's default, which is
 # config.settings.local — DEBUG=True, no SSL redirect, no HSTS, permissive
 # CORS. That failure is silent: the app boots and serves traffic, it is just
