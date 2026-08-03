@@ -10,6 +10,29 @@ set -euo pipefail
 echo "==> DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE:-UNSET}"
 echo "==> PORT=${PORT:-8000}"
 
+# A deployed container must never fall back to manage.py's default, which is
+# config.settings.local — DEBUG=True, no SSL redirect, no HSTS, permissive
+# CORS. That failure is silent: the app boots and serves traffic, it is just
+# unprotected. Refuse to start instead.
+case "${DJANGO_SETTINGS_MODULE:-}" in
+    config.settings.staging|config.settings.production)
+        ;;
+    "")
+        echo "!!! DJANGO_SETTINGS_MODULE is not set."
+        echo "    Without it Django falls back to config.settings.local, which"
+        echo "    runs with DEBUG=True and no security middleware. Set it to"
+        echo "    config.settings.staging or config.settings.production in the"
+        echo "    Railway Variables tab for THIS environment."
+        exit 1
+        ;;
+    *)
+        echo "!!! DJANGO_SETTINGS_MODULE='${DJANGO_SETTINGS_MODULE}' is not a"
+        echo "    deployable settings module. Expected config.settings.staging"
+        echo "    or config.settings.production."
+        exit 1
+        ;;
+esac
+
 if [ -z "${DATABASE_URL:-}" ]; then
     echo "!!! DATABASE_URL is not set."
     echo "    On Railway this is injected automatically once a Postgres service"
