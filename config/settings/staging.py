@@ -69,6 +69,7 @@ CSRF_TRUSTED_ORIGINS = [o for o in config('CSRF_TRUSTED_ORIGINS', cast=Csv(), de
 # response; robots.txt alone is not enough because it does not stop indexing
 # of pages already discovered.
 STAGING_NOINDEX = True
+MIDDLEWARE = ['core.middleware.staging.NoIndexMiddleware', *MIDDLEWARE]  # noqa: F405
 
 # ---------------------------------------------------------------------------
 # 5. Payments — Hubtel, test credentials only
@@ -108,10 +109,10 @@ CLOUDINARY_FOLDER_PREFIX = 'ona-staging'
 # Staging has copies of real bookings, which means real addresses. Sending
 # from staging means emailing customers about bookings that did not happen.
 # Everything is redirected to one inbox instead.
-EMAIL_BACKEND = config(
-    'EMAIL_BACKEND',
-    default='django.core.mail.backends.console.EmailBackend',
-)
+# Never allow staging to select the production SMTP backend directly. This
+# backend still uses SMTP, but replaces every recipient with the controlled
+# staging inbox before handing the message off.
+EMAIL_BACKEND = 'core.email_backends.RedirectingEmailBackend'
 STAGING_EMAIL_REDIRECT_TO = config('STAGING_EMAIL_REDIRECT_TO', default='')
 
 DEFAULT_FROM_EMAIL = config(

@@ -17,18 +17,21 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from django.utils import timezone
 from rest_framework import status
+from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
-from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .serializers import (
+    EmptySerializer,
     LoginSerializer,
+    LogoutSerializer,
     PasswordResetConfirmSerializer,
     PasswordResetRequestSerializer,
     RegisterSerializer,
     UserSerializer,
+    VerifyEmailSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +43,7 @@ def _tokens_for(user) -> dict:
     return {'refresh': str(refresh), 'access': str(refresh.access_token)}
 
 
-def _send_verification_email(user, request) -> None:
+def _send_verification_email(user) -> None:
     """
     Send the verification link.
 
@@ -70,16 +73,17 @@ def _send_verification_email(user, request) -> None:
         logger.exception('Verification email failed for user %s', user.pk)
 
 
-class RegisterView(APIView):
+class RegisterView(GenericAPIView):
+    serializer_class = RegisterSerializer
     permission_classes = [AllowAny]
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        _send_verification_email(user, request)
+        _send_verification_email(user)
 
         # Tokens are issued immediately. The account works before the email
         # is confirmed — verification gates the things that matter (booking,
@@ -92,12 +96,13 @@ class RegisterView(APIView):
         )
 
 
-class LoginView(APIView):
+class LoginView(GenericAPIView):
+    serializer_class = LoginSerializer
     permission_classes = [AllowAny]
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
-        serializer = LoginSerializer(data=request.data, context={'request': request})
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
 
@@ -110,7 +115,8 @@ class LoginView(APIView):
         })
 
 
-class LogoutView(APIView):
+class LogoutView(GenericAPIView):
+    serializer_class = LogoutSerializer
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -122,10 +128,9 @@ class LogoutView(APIView):
         check a denylist on each request, which is a cost not worth paying
         for a booking platform.
         """
-        token = request.data.get('refresh')
-        if not token:
-            return Response({'detail': 'A refresh token is required.'},
-                            status=status.HTTP_400_BAD_REQUEST)
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        token = serializer.validated_data['refresh']
         try:
             RefreshToken(token).blacklist()
         except Exception:
@@ -135,28 +140,30 @@ class LogoutView(APIView):
         return Response(status=status.HTTP_205_RESET_CONTENT)
 
 
-class MeView(APIView):
+class MeView(GenericAPIView):
+    serializer_class = UserSerializer
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response(UserSerializer(request.user, context={'request': request}).data)
+        return Response(self.get_serializer(request.user).data)
 
     def patch(self, request):
-        serializer = UserSerializer(
-            request.user, data=request.data, partial=True, context={'request': request},
-        )
+        serializer = self.get_serializer(request.user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
 
 
-class VerifyEmailView(APIView):
+class VerifyEmailView(GenericAPIView):
+    serializer_class = VerifyEmailSerializer
     permission_classes = [AllowAny]
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
-        uid = request.data.get('uid', '')
-        token = request.data.get('token', '')
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uid = serializer.validated_data['uid']
+        token = serializer.validated_data['token']
 
         try:
             pk = force_str(urlsafe_base64_decode(uid))
@@ -179,22 +186,24 @@ class VerifyEmailView(APIView):
         return Response({'detail': 'Email address confirmed.'})
 
 
-class ResendVerificationView(APIView):
+class ResendVerificationView(GenericAPIView):
+    serializer_class = EmptySerializer
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
         if request.user.is_email_verified:
             return Response({'detail': 'This email address is already confirmed.'})
-        _send_verification_email(request.user, request)
+        _send_verification_email(request.user)
         return Response({'detail': 'A new confirmation email is on its way.'})
 
 
-class PasswordResetRequestView(APIView):
+class PasswordResetRequestView(GenericAPIView):
+    serializer_class = PasswordResetRequestSerializer
     permission_classes = [AllowAny]
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
-        serializer = PasswordResetRequestSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email'].lower().strip()
 
@@ -227,29 +236,16 @@ class PasswordResetRequestView(APIView):
         })
 
 
-class PasswordResetConfirmView(APIView):
+class PasswordResetConfirmView(GenericAPIView):
+    serializer_class = PasswordResetConfirmSerializer
     permission_classes = [AllowAny]
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
-        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
-
-        try:
-            pk = force_str(urlsafe_base64_decode(data['uid']))
-            user = User.objects.get(pk=pk)
-        except Exception:
-            return Response({'detail': 'This reset link is not valid.'},
-                            status=status.HTTP_400_BAD_REQUEST)
-
-        if not default_token_generator.check_token(user, data['token']):
-            return Response(
-                {'detail': 'This reset link has expired or has already been used. '
-                           'Request a new one.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
+        user = data['user']
         user.set_password(data['password'])
         user.save(update_fields=['password'])
 

@@ -91,6 +91,10 @@ class TestSplitRejectsBadInput:
         with pytest.raises(TypeError, match='must be int'):
             split_commission(1250.50, 15)
 
+    def test_rejects_boolean_amount(self):
+        with pytest.raises(TypeError):
+            split_commission(True, 15)
+
     def test_rejects_decimal_via_type_check(self):
         from decimal import Decimal
         with pytest.raises(TypeError):
@@ -103,6 +107,11 @@ class TestSplitRejectsBadInput:
     @pytest.mark.parametrize('pct', [-1, 101, 1000])
     def test_rejects_impossible_percentages(self, pct):
         with pytest.raises(ValueError):
+            split_commission(1000, pct)
+
+    @pytest.mark.parametrize('pct', [True, 15.0, '15'])
+    def test_rejects_non_integer_percentages(self, pct):
+        with pytest.raises(TypeError):
             split_commission(1000, pct)
 
     def test_split_refuses_to_construct_if_it_does_not_reconcile(self):
@@ -141,3 +150,7 @@ class TestFormatGhs:
     def test_rejects_float(self):
         with pytest.raises(TypeError):
             format_ghs(1250.5)
+
+    def test_rejects_boolean_amount(self):
+        with pytest.raises(TypeError):
+            format_ghs(True)

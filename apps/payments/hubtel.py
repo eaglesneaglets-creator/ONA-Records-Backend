@@ -22,7 +22,7 @@ customer's phone and the customer authorises it there.
 import base64
 import logging
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 import requests
 from django.conf import settings
@@ -38,7 +38,7 @@ def pesewas_to_ghs_string(pesewas: int) -> str:
     1250 -> "12.50". Decimal, not float: this is the one place the value
     crosses into a decimal representation, and it must be exact.
     """
-    if not isinstance(pesewas, int):
+    if type(pesewas) is not int:
         raise TypeError(
             'Amount must be an integer number of pesewas, got %r (%s). '
             'Storing money as float or Decimal is a bug in this codebase.'
@@ -46,7 +46,8 @@ def pesewas_to_ghs_string(pesewas: int) -> str:
         )
     if pesewas <= 0:
         raise ValueError('Amount must be positive, got %d pesewas.' % pesewas)
-    return str(Decimal(pesewas) / Decimal(settings.CURRENCY_MINOR_UNITS))
+    amount = Decimal(pesewas) / Decimal(settings.CURRENCY_MINOR_UNITS)
+    return format(amount, '.2f')
 
 
 def ghs_string_to_pesewas(amount: str) -> int:
@@ -55,7 +56,18 @@ def ghs_string_to_pesewas(amount: str) -> int:
 
     Used when reconciling a callback against what we expected to be charged.
     """
-    return int((Decimal(str(amount)) * settings.CURRENCY_MINOR_UNITS).to_integral_value())
+    try:
+        decimal_amount = Decimal(str(amount))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError('Hubtel amount must be a valid decimal string.') from exc
+
+    if not decimal_amount.is_finite():
+        raise ValueError('Hubtel amount must be finite.')
+
+    pesewas = decimal_amount * settings.CURRENCY_MINOR_UNITS
+    if pesewas != pesewas.to_integral_value():
+        raise ValueError('Hubtel amount contains a fractional pesewa.')
+    return int(pesewas)
 
 
 class HubtelClient:
@@ -81,12 +93,19 @@ class HubtelClient:
             'Content-Type': 'application/json',
         }
 
+    @staticmethod
+    def _account_id() -> str:
+        account = settings.HUBTEL_POS_SALES_ID or settings.HUBTEL_MERCHANT_ID
+        if not account:
+            raise ValidationError(
+                {'payment': 'Payments are not configured. Contact ONA.'}
+            )
+        return account
+
     @classmethod
     def detect_channel(cls, phone: str) -> str:
         """Guess the network from a Ghana number. Returns a Hubtel channel."""
-        digits = re.sub(r'[\s\-()+]', '', phone)
-        local = digits[3:] if digits.startswith('233') else digits
-        local = local if local.startswith('0') else '0' + local
+        local = cls.to_local_format(phone)
 
         if local.startswith(cls._MTN_PREFIXES):
             return 'mtn-gh'
@@ -100,17 +119,21 @@ class HubtelClient:
         digits = re.sub(r'[\s\-()]', '', phone)
         if digits.startswith('+'):
             digits = digits[1:]
-        if digits.startswith('0'):
-            digits = '233' + digits[1:]
-        return digits
+        if not digits.isdigit():
+            raise ValueError('Phone number may contain digits and formatting characters only.')
+        if len(digits) == 10 and digits.startswith('0'):
+            return '233' + digits[1:]
+        if len(digits) == 9:
+            return '233' + digits
+        if len(digits) == 12 and digits.startswith('233'):
+            return digits
+        raise ValueError('Phone number must be a valid Ghanaian mobile number.')
 
     @staticmethod
     def to_local_format(phone: str) -> str:
         """Convert 233XXXXXXXXX back to 0XXXXXXXXX."""
-        digits = re.sub(r'[\s\-()+]', '', phone)
-        if digits.startswith('233'):
-            digits = '0' + digits[3:]
-        return digits
+        international = HubtelClient.format_phone(phone)
+        return '0' + international[3:]
 
     @classmethod
     def initiate_payment(
@@ -130,11 +153,7 @@ class HubtelClient:
         it is what ties the callback back to a booking or project.
         Returns Hubtel's raw response.
         """
-        account = settings.HUBTEL_POS_SALES_ID or settings.HUBTEL_MERCHANT_ID
-        if not account:
-            raise ValidationError(
-                {'payment': 'Payments are not configured. Contact ONA.'}
-            )
+        account = cls._account_id()
 
         payload = {
             'customerName': customer_name,
@@ -190,12 +209,15 @@ class HubtelClient:
         duplicated or delayed, so anything left pending must be reconciled
         by polling here.
         """
-        account = settings.HUBTEL_POS_SALES_ID or settings.HUBTEL_MERCHANT_ID
-        url = '%s?clientReference=%s' % (
-            cls.STATUS_URL.format(account=account), client_reference,
-        )
+        account = cls._account_id()
+        url = cls.STATUS_URL.format(account=account)
         try:
-            resp = requests.get(url, headers=cls._auth_header(), timeout=15)
+            resp = requests.get(
+                url,
+                params={'clientReference': client_reference},
+                headers=cls._auth_header(),
+                timeout=15,
+            )
             resp.raise_for_status()
             return resp.json()
         except requests.HTTPError as exc:

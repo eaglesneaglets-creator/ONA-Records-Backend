@@ -110,6 +110,17 @@ class TestRegistration:
         }, format='json')
         assert r.status_code == 400
 
+    def test_rejects_a_password_similar_to_registration_details(self, api):
+        r = api.post(reverse('accounts:register'), {
+            'email': 'distinctive.person@example.com',
+            'password': 'distinctive.person@example.com',
+            'password_confirm': 'distinctive.person@example.com',
+            'first_name': 'Distinctive',
+        }, format='json')
+
+        assert r.status_code == 400
+        assert 'password' in r.data['error']['detail']
+
     def test_rejects_a_duplicate_email(self, api, customer):
         r = api.post(reverse('accounts:register'), {
             'email': 'ABENA@example.com',   # different case, same account
@@ -323,6 +334,47 @@ class TestPasswordReset:
             'password_confirm': 'a-brand-new-password',
         }, format='json')
         assert r.status_code == 400
+
+    def test_rejects_a_malformed_user_id(self, api):
+        r = api.post(reverse('accounts:password-reset-confirm'), {
+            'uid': 'bm90LWEtdXVpZA',
+            'token': 'not-a-real-token',
+            'password': 'a-brand-new-password',
+            'password_confirm': 'a-brand-new-password',
+        }, format='json')
+
+        assert r.status_code == 400
+        assert 'token' in r.data['error']['detail']
+
+    def test_rejects_a_password_similar_to_the_account(self, api, customer):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+
+        r = api.post(reverse('accounts:password-reset-confirm'), {
+            'uid': urlsafe_base64_encode(force_bytes(customer.pk)),
+            'token': default_token_generator.make_token(customer),
+            'password': 'abena@example.com',
+            'password_confirm': 'abena@example.com',
+        }, format='json')
+
+        assert r.status_code == 400
+        assert 'password' in r.data['error']['detail']
+
+
+class TestUserManager:
+    @pytest.mark.parametrize('field,value', [
+        ('is_staff', False),
+        ('is_superuser', False),
+        ('role', 'customer'),
+    ])
+    def test_create_superuser_rejects_inconsistent_privileges(self, field, value):
+        with pytest.raises(ValueError):
+            User.objects.create_superuser(
+                email=f'{field}@example.com',
+                password='a-long-enough-password',
+                **{field: value},
+            )
 
 
 class TestEmailVerification:

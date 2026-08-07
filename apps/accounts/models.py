@@ -47,6 +47,10 @@ class UserManager(BaseUserManager):
         extra.setdefault('email_verified_at', timezone.now())
         if extra.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
+        if extra.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+        if extra.get('role') != Role.ADMIN:
+            raise ValueError('Superuser must have role=admin.')
         return self._create_user(email, password, **extra)
 
 
