@@ -1,0 +1,53 @@
+# Local development services.
+#
+#   docker compose up -d       start Postgres and Redis
+#   docker compose down        stop them, keep the data
+#   docker compose down -v     stop them and wipe the data
+#
+# Only the services are here, not Django. Running Django on the host means
+# the reloader, the debugger and pytest all behave normally; containerising
+# it buys nothing locally and costs a rebuild on every dependency change.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ona-postgres
+    environment:
+      POSTGRES_DB: ona_dev
+      POSTGRES_USER: ona
+      POSTGRES_PASSWORD: ona
+    ports:
+      # Host 5433, not 5432. A Postgres installed directly on Windows was
+      # already listening on 5432; Windows lets both bind, and connections
+      # go to whichever won the race — which fails authentication against a
+      # server that has no 'ona' user, with a confusing error.
+      #
+      # Using a distinct port means this project never competes with a
+      # machine-wide Postgres, and neither has to be stopped for the other.
+      - "5433:5432"
+    volumes:
+      - ona_pgdata:/var/lib/postgresql/data
+      # Runs once, on an empty data directory. btree_gist is what the
+      # no-double-booking EXCLUDE constraint depends on, so it has to exist
+      # before the first migration that uses it.
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ona -d ona_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ona-redis
+    ports:
+      # 6380 for the same reason as Postgres above.
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  ona_pgdata:

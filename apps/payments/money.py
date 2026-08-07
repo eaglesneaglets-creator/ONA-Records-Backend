@@ -53,13 +53,18 @@ def split_commission(total_pesewas: int, commission_percent: int) -> Split:
         >>> s.professional_pesewas          # keeps the remainder
         86
     """
-    if not isinstance(total_pesewas, int):
+    if type(total_pesewas) is not int:
         raise TypeError(
             'total_pesewas must be int, got %s. Money is never float here.'
             % type(total_pesewas).__name__
         )
     if total_pesewas < 0:
         raise ValueError('total_pesewas must not be negative.')
+    if type(commission_percent) is not int:
+        raise TypeError(
+            'commission_percent must be int, got %s.'
+            % type(commission_percent).__name__
+        )
     if not 0 <= commission_percent <= 100:
         raise ValueError('commission_percent must be between 0 and 100.')
 
@@ -77,7 +82,7 @@ def split_commission(total_pesewas: int, commission_percent: int) -> Split:
 
 def format_ghs(pesewas: int) -> str:
     """Format for display: 125000 -> 'GHS 1,250.00'."""
-    if not isinstance(pesewas, int):
+    if type(pesewas) is not int:
         raise TypeError('pesewas must be int, got %s.' % type(pesewas).__name__)
     negative = pesewas < 0
     whole, part = divmod(abs(pesewas), 100)

@@ -7,8 +7,11 @@ admin. ONA staff are created through the admin, not through a public endpoint.
 """
 
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
 
 from core.serializers import MaskedUserSerializer
@@ -42,8 +45,16 @@ class RegisterSerializer(serializers.ModelSerializer):
         if attrs['password'] != attrs.pop('password_confirm'):
             raise serializers.ValidationError({'password_confirm': 'The two passwords do not match.'})
 
+        # Attribute-similarity validation only works when Django receives a
+        # user-shaped object. Passing the password alone silently disables
+        # checks against the email and names supplied during registration.
+        candidate = User(
+            email=attrs.get('email', ''),
+            first_name=attrs.get('first_name', ''),
+            last_name=attrs.get('last_name', ''),
+        )
         try:
-            validate_password(attrs['password'])
+            validate_password(attrs['password'], user=candidate)
         except DjangoValidationError as exc:
             raise serializers.ValidationError({'password': list(exc.messages)})
 
@@ -100,6 +111,10 @@ class LoginSerializer(serializers.Serializer):
         return attrs
 
 
+class LogoutSerializer(serializers.Serializer):
+    refresh = serializers.CharField()
+
+
 class UserSerializer(MaskedUserSerializer):
     """
     The authenticated user's own record.
@@ -139,6 +154,15 @@ class PasswordResetRequestSerializer(serializers.Serializer):
     # either way, so this endpoint cannot be used to discover accounts.
 
 
+class VerifyEmailSerializer(serializers.Serializer):
+    uid = serializers.CharField()
+    token = serializers.CharField()
+
+
+class EmptySerializer(serializers.Serializer):
+    """Documents endpoints that intentionally accept no request body."""
+
+
 class PasswordResetConfirmSerializer(serializers.Serializer):
     uid = serializers.CharField()
     token = serializers.CharField()
@@ -148,8 +172,22 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs['password'] != attrs.pop('password_confirm'):
             raise serializers.ValidationError({'password_confirm': 'The two passwords do not match.'})
+
         try:
-            validate_password(attrs['password'])
+            pk = force_str(urlsafe_base64_decode(attrs['uid']))
+            user = User.objects.get(pk=pk)
+        except (DjangoValidationError, ValueError, TypeError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({'token': 'This reset link is not valid.'})
+
+        if not default_token_generator.check_token(user, attrs['token']):
+            raise serializers.ValidationError({
+                'token': 'This reset link has expired or has already been used. Request a new one.'
+            })
+
+        try:
+            validate_password(attrs['password'], user=user)
         except DjangoValidationError as exc:
             raise serializers.ValidationError({'password': list(exc.messages)})
+
+        attrs['user'] = user
         return attrs

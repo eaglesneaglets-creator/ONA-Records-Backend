@@ -1,4 +1,4 @@
-name: Backend CI / CD
+name: Backend CI
 
 on:
   push:
@@ -6,11 +6,14 @@ on:
   pull_request:
     branches: [main, develop]
 
-# A newer push makes an in-flight run obsolete. Cancel it rather than pay for
-# both — except on main, where we want the deploy to finish.
+# A newer revision makes an in-flight CI run obsolete. Railway owns deployment,
+# so this workflow has no long-running deploy that needs preserving.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 env:
   PYTHON_VERSION: '3.12'
@@ -84,7 +87,7 @@ jobs:
         run: python manage.py migrate --noinput
 
       - name: Run tests
-        run: pytest --cov=apps --cov=core --cov-report=term-missing
+        run: pytest --cov=apps --cov=core --cov-report=term-missing --cov-fail-under=90
 
   # ---------------------------------------------------------------------------
   # Money safety. Separate job so it reports separately: if this fails, the
@@ -147,40 +150,22 @@ jobs:
           PY
 
   # ---------------------------------------------------------------------------
-  # Deploys. develop → staging, main → production.
+  # Deploys are NOT run from here.
+  #
+  # Railway's GitHub integration owns deployment: it watches develop → Staging
+  # and main → Production, and deploys the merged commit itself. This workflow
+  # is a merge gate only — it decides whether a PR is allowed to land, and
+  # Railway decides what ships once it has.
+  #
+  # A `railway up` job here would be a second deployer racing the first: both
+  # fire on the same push, both target the same service, and whichever finishes
+  # last wins. That is what was happening before, so the jobs were removed
+  # rather than fixed.
+  #
+  # Production moves real money, so it should not deploy unattended. Enforce
+  # that on Railway itself: the Production environment's service should have
+  # "Wait for CI" enabled, or auto-deploy off with a manual promote. A GitHub
+  # `environment:` approval gate protects nothing once Railway is the deployer.
+  #
+  # Migrations run in start.sh before Gunicorn binds the port, not from CI.
   # ---------------------------------------------------------------------------
-  deploy-staging:
-    name: Deploy → staging
-    needs: [test, money]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm install -g @railway/cli
-      - name: Deploy
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_STAGING }}
-        run: railway up --service ona-backend --environment staging --detach
-
-  deploy-production:
-    name: Deploy → production
-    needs: [test, money]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    # Set this environment to require manual approval in GitHub settings.
-    # Production moves real money; a merge should not deploy unattended.
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - run: npm install -g @railway/cli
-      - name: Deploy
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN_PRODUCTION }}
-        run: railway up --service ona-backend --environment production --detach
-
-      - name: Summary
-        run: |
-          echo "### Backend deployed" >> $GITHUB_STEP_SUMMARY
-          echo "Commit: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "By: ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
