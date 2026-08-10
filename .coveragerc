@@ -24,7 +24,6 @@ omit =
 #                           (Cloudinary via MediaStorage; see docs/setup.md)
 #   core/mixins/*         → wire when the first model inherits them
 #                           (soft delete is required on money-touching rows)
-    core/storage.py
     core/mixins/*
 
 [report]

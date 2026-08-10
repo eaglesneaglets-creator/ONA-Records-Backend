@@ -147,7 +147,7 @@ class TestAuditLog:
         e = AuditLog.objects.get()
         assert e.action == 'professional.approved'
         assert e.actor == admin_user
-        assert e.target_type == 'User'
+        assert e.target_type == 'accounts.user'
         assert e.metadata['reason'] == 'portfolio verified'
 
     def test_survives_the_actor_being_deleted(self, admin_user, professional):

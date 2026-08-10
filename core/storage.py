@@ -3,12 +3,10 @@ Cloudinary storage.
 
 Adapted from the Eagles & Eaglets implementation. The valuable idea carried
 over is the upload CONTEXT: a caller must name what kind of upload this is,
-and the allowed MIME types and size ceiling are looked up from that name
-rather than taken from whatever the client claimed.
-
-Trusting `file.content_type` alone means a caller can label an executable as
-an image. The context list is the allow-list, and it lives here rather than
-being passed in at the call site.
+and the declared MIME type and size ceiling are validated against that name.
+The context list is the allow-list, and it lives here rather than being
+passed in at the call site. This is an ingress guard, not content inspection;
+surfaces accepting untrusted files still need signature and malware checks.
 
 WHY THIS IS BEHIND AN INTERFACE
     The plan commits to Cloudinary now and a possible S3 move later. Every
@@ -156,7 +154,9 @@ def upload(file, *, context: str, **options) -> dict:
         })
 
     mime = getattr(file, 'content_type', None)
-    if mime and mime not in rules['allowed_mime']:
+    if not mime:
+        raise ValidationError({'file': 'The file type could not be determined.'})
+    if mime not in rules['allowed_mime']:
         raise ValidationError({
             'file': '%s files are not accepted here. Allowed: %s.'
                     % (mime, ', '.join(sorted(rules['allowed_mime']))),
