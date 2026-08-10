@@ -39,8 +39,30 @@ User = get_user_model()
 
 
 def _tokens_for(user) -> dict:
+    """
+    Issue a token pair carrying the claims the frontend routes on.
+
+    Without `role` in the token the frontend has to call /me before it knows
+    which portal to render, on every page load — a round-trip that shows the
+    user a flash of the wrong shell first.
+
+    These claims are a routing hint, not an authorisation decision. They are
+    a snapshot from issue time: a professional approved thirty seconds after
+    signing in still carries `is_approved: false` until the token refreshes.
+    The server therefore never trusts them — permission classes read the
+    database. Anything that must be current must not be read from here.
+    """
     refresh = RefreshToken.for_user(user)
-    return {'refresh': str(refresh), 'access': str(refresh.access_token)}
+    refresh['role'] = user.role
+    refresh['is_email_verified'] = user.is_email_verified
+    refresh['is_approved'] = user.is_approved
+
+    access = refresh.access_token
+    access['role'] = user.role
+    access['is_email_verified'] = user.is_email_verified
+    access['is_approved'] = user.is_approved
+
+    return {'refresh': str(refresh), 'access': str(access)}
 
 
 def _send_verification_email(user) -> None:

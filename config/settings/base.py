@@ -35,6 +35,7 @@ THIRD_PARTY_APPS = [
 
 # One app per bounded context, as set out in the plan.
 LOCAL_APPS = [
+    'core',                # shared: AuditLog, permissions, storage, mixins
     'apps.accounts',       # users, roles, profiles
     'apps.studio',         # rooms, engineers, bookings
     'apps.marketplace',    # professional profiles, listings, portfolio
