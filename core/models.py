@@ -9,7 +9,7 @@ of those should have to depend on the accounts app to write a record.
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
 
 
 class AuditLog(models.Model):
@@ -136,7 +136,10 @@ class AuditLog(models.Model):
             )
 
             if target is not None:
-                entry.target_type = target.__class__.__name__
+                target_meta = getattr(target, '_meta', None)
+                entry.target_type = getattr(
+                    target_meta, 'label_lower', target.__class__.__name__,
+                )
                 entry.target_id = str(getattr(target, 'pk', ''))
 
             if request is not None:
@@ -148,7 +151,11 @@ class AuditLog(models.Model):
                     else request.META.get('REMOTE_ADDR')
                 )
 
-            entry.save()
+            # Isolate a database failure from a transaction owned by the
+            # caller. Catching the exception alone leaves that transaction
+            # unusable unless the failing write had its own savepoint.
+            with transaction.atomic():
+                entry.save()
             return entry
         except Exception:
             logging.getLogger(__name__).exception(
