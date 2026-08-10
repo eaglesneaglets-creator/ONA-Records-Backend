@@ -3,5 +3,29 @@ omit =
     */migrations/*
     */tests/*
 
+# ---------------------------------------------------------------------------
+# Ported-but-unwired infrastructure. 2026-08-10.
+#
+# These came across from the Eagles & Eaglets reference ahead of the models
+# that will use them. Nothing in apps/, core/, or config/ imports them yet —
+# verified by grep, not assumed. They are therefore untestable in any way that
+# means anything: a test written now would assert against an imagined caller,
+# and would need rewriting the moment a real one appears.
+#
+# They are omitted so the coverage gate measures code that actually runs,
+# rather than being satisfied by tests that prove nothing.
+#
+# DELETE THE MATCHING LINE THE MOMENT THE FILE GAINS A REAL CALLER — the
+# exclusion is what keeps untested code invisible, so it must not outlive the
+# reason for it. Whoever wires one of these up owns writing its tests in the
+# same PR.
+#
+#   core/storage.py       → wire when portfolio/deliverable uploads land
+#                           (Cloudinary via MediaStorage; see docs/setup.md)
+#   core/mixins/*         → wire when the first model inherits them
+#                           (soft delete is required on money-touching rows)
+    core/storage.py
+    core/mixins/*
+
 [report]
 show_missing = True
