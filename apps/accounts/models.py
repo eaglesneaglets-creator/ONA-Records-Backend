@@ -90,6 +90,21 @@ class User(AbstractBaseUser, PermissionsMixin):
     email_verified_at = models.DateTimeField(null=True, blank=True)
     date_joined = models.DateTimeField(default=timezone.now)
 
+    # ONA approval — professionals only.
+    #
+    # A timestamp and an actor rather than a boolean, because "approved" is
+    # something a named person did at a moment, and a dispute will ask who and
+    # when. A bare flag cannot answer that.
+    #
+    # Customers are not approved; they are simply active. The is_approved
+    # predicate below encodes that so callers do not have to.
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='professionals_approved',
+        help_text='The ONA admin who approved this professional.',
+    )
+
     objects = UserManager()
 
     USERNAME_FIELD = 'email'
@@ -126,3 +141,23 @@ class User(AbstractBaseUser, PermissionsMixin):
     @property
     def is_email_verified(self) -> bool:
         return self.email_verified_at is not None
+
+    @property
+    def is_approved(self) -> bool:
+        """
+        Cleared to appear and to earn.
+
+        Only professionals go through approval. Customers and admins are
+        approved by definition, so callers can ask this of any user without
+        special-casing the role.
+        """
+        if self.role != Role.PROFESSIONAL:
+            return True
+        return self.approved_at is not None
+
+    def approve(self, by) -> None:
+        """Record who approved this professional, and when. Idempotent."""
+        if self.approved_at is None:
+            self.approved_at = timezone.now()
+            self.approved_by = by
+            self.save(update_fields=['approved_at', 'approved_by'])

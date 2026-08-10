@@ -4,6 +4,7 @@ from django.urls import path
 from rest_framework_simplejwt.views import TokenRefreshView
 
 from . import views
+from .serializers import RoleAwareTokenRefreshSerializer
 
 app_name = 'accounts'
 
@@ -11,7 +12,9 @@ urlpatterns = [
     path('register/', views.RegisterView.as_view(), name='register'),
     path('login/', views.LoginView.as_view(), name='login'),
     path('logout/', views.LogoutView.as_view(), name='logout'),
-    path('refresh/', TokenRefreshView.as_view(), name='token-refresh'),
+    path('refresh/',
+         TokenRefreshView.as_view(serializer_class=RoleAwareTokenRefreshSerializer),
+         name='token-refresh'),
 
     path('me/', views.MeView.as_view(), name='me'),
 

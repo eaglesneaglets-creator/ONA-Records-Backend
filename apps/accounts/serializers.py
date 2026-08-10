@@ -13,6 +13,8 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenRefreshSerializer
+from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
 
 from core.serializers import MaskedUserSerializer
 
@@ -113,6 +115,42 @@ class LoginSerializer(serializers.Serializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField()
+
+
+class RoleAwareTokenRefreshSerializer(TokenRefreshSerializer):
+    """
+    Keep the routing claims across a refresh.
+
+    simplejwt's stock refresh mints a bare access token from the refresh
+    token, dropping any custom claims. The frontend would then lose `role`
+    thirty minutes into a session and misroute the user.
+
+    The claims are re-read from the database rather than copied across, so a
+    professional approved mid-session gets the updated value on their next
+    refresh instead of waiting for a full sign-in.
+    """
+
+    def validate(self, attrs):
+        # Read the user id BEFORE super().validate(). With
+        # ROTATE_REFRESH_TOKENS and BLACKLIST_AFTER_ROTATION both on, the
+        # parent blacklists the incoming token — so constructing a
+        # RefreshToken from it afterwards raises "token is blacklisted" and
+        # every refresh 401s. Decoding first avoids touching it twice.
+        user_id = RefreshToken(attrs['refresh']).get('user_id')
+
+        data = super().validate(attrs)
+
+        user = User.objects.filter(pk=user_id).first()
+        if user is None:
+            raise serializers.ValidationError('This session is no longer valid.')
+
+        access = AccessToken(data['access'])
+        access['role'] = user.role
+        access['is_email_verified'] = user.is_email_verified
+        access['is_approved'] = user.is_approved
+        data['access'] = str(access)
+
+        return data
 
 
 class UserSerializer(MaskedUserSerializer):
