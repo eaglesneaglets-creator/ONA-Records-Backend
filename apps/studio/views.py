@@ -23,19 +23,25 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from core.models import AuditLog
 from core.permissions.roles import IsCustomer, IsOwnerOrONAAdmin
 
 from .availability import MAX_RANGE_DAYS, availability
-from .models import Engineer, Room, Service, StudioBooking, constraint_name
+from .models import (
+    SLOT_HOLDING_STATUSES, BookingStatus, Engineer, Room, Service, StudioBooking,
+    constraint_name,
+)
 from .serializers import (
-    BookingCreateSerializer, BookingSerializer, EngineerSerializer, RoomSerializer,
-    ServiceSerializer, SlotSerializer,
+    BookingCreateSerializer, BookingRescheduleSerializer, BookingSerializer,
+    BookingSummarySerializer, EngineerSerializer, RoomSerializer, ServiceSerializer,
+    SlotSerializer,
 )
 
 
@@ -138,11 +144,15 @@ class SlotTaken(APIException):
 class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
                      mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """
-    POST /studio/bookings/        customer creates (no payment yet — Phase 2)
-    GET  /studio/bookings/        own bookings; ONA staff see all
-    GET  /studio/bookings/{id}/   own, or ONA staff
+    POST /studio/bookings/                    customer creates (no payment yet — Phase 2)
+    GET  /studio/bookings/?when=upcoming|past own bookings; ONA staff see all
+    GET  /studio/bookings/{id}/               own, or ONA staff
+    GET  /studio/bookings/summary/            dashboard numbers for the caller
+    POST /studio/bookings/{id}/cancel/        releases the slot
+    POST /studio/bookings/{id}/reschedule/    new start, same room/engineer/length
 
-    Cancel / reschedule arrive with the customer dashboard (Task 12).
+    Cancel and reschedule are recorded in AuditLog: they change what a
+    customer has agreed to, and "who moved my session?" must be answerable.
     """
 
     permission_classes = [IsAuthenticated, IsOwnerOrONAAdmin]
@@ -167,9 +177,71 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         if getattr(self, 'swagger_fake_view', False):  # schema generation
             return qs.none()
         u = self.request.user
-        if u.role == 'admin' or u.is_superuser:
-            return qs
-        return qs.filter(customer=u)
+        if not (u.role == 'admin' or u.is_superuser):
+            qs = qs.filter(customer=u)
+
+        when = self.request.query_params.get('when') if self.action == 'list' else None
+        now = timezone.now()
+        if when == 'upcoming':
+            qs = qs.filter(status__in=SLOT_HOLDING_STATUSES, end_at__gt=now).order_by('start_at')
+        elif when == 'past':
+            qs = qs.exclude(status__in=SLOT_HOLDING_STATUSES, end_at__gt=now).order_by('-start_at')
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        upcoming = list(
+            StudioBooking.objects.filter(
+                customer=request.user, status__in=SLOT_HOLDING_STATUSES,
+                end_at__gt=timezone.now(),
+            ).select_related('room', 'engineer', 'service').order_by('start_at')
+        )
+        data = {
+            'upcoming_count': len(upcoming),
+            'pending_count': sum(b.status == BookingStatus.PENDING for b in upcoming),
+            'upcoming_hours': sum(b.duration_minutes for b in upcoming) // 60,
+            'next': upcoming[0] if upcoming else None,
+        }
+        return Response(BookingSummarySerializer(data, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        booking = self.get_object()
+        if not booking.can_change:
+            return Response(
+                {'detail': 'This booking can no longer be cancelled.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        before = booking.status
+        booking.status = BookingStatus.CANCELLED
+        booking.save(update_fields=['status', 'updated_at'])
+        AuditLog.record('booking.cancelled', actor=request.user, target=booking, request=request,
+                        reference=booking.reference, previous_status=before)
+        return Response(BookingSerializer(booking, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=['post'])
+    def reschedule(self, request, pk=None):
+        booking = self.get_object()
+        ser = BookingRescheduleSerializer(data=request.data,
+                                          context={'request': request, 'booking': booking})
+        ser.is_valid(raise_exception=True)
+        old_start = booking.start_at
+        booking.start_at = ser.validated_data['start_at']
+        booking.end_at = ser.validated_data['end_at']
+        try:
+            with transaction.atomic():
+                booking.save(update_fields=['start_at', 'end_at', 'updated_at'])
+        except IntegrityError as exc:
+            name = constraint_name(exc)
+            if not name.endswith(('_room_overlap', '_engineer_overlap')):
+                raise
+            which = 'engineer' if name.endswith('_engineer_overlap') else 'room'
+            raise SlotTaken(f'That {which} was booked by someone else just now. '
+                            'Please pick another time.')
+        AuditLog.record('booking.rescheduled', actor=request.user, target=booking,
+                        request=request, reference=booking.reference,
+                        from_start=old_start.isoformat(), to_start=booking.start_at.isoformat())
+        return Response(BookingSerializer(booking, context=self.get_serializer_context()).data)
 
     def create(self, request, *args, **kwargs):
         ser = self.get_serializer(data=request.data)

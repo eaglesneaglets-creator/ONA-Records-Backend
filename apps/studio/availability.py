@@ -133,7 +133,8 @@ def availability(*, start: date, end: date, room=None, engineer=None) -> list[Sl
     return slots
 
 
-def is_free(*, room, engineer, start_at: datetime, end_at: datetime) -> tuple[bool, str]:
+def is_free(*, room, engineer, start_at: datetime, end_at: datetime,
+            exclude_booking=None) -> tuple[bool, str]:
     """
     Pre-insert check for the booking endpoint: (ok, reason).
 
@@ -155,7 +156,11 @@ def is_free(*, room, engineer, start_at: datetime, end_at: datetime) -> tuple[bo
         Q(room=room) | Q(engineer=engineer),
         status__in=SLOT_HOLDING_STATUSES,
         start_at__lt=end_at, end_at__gt=start_at,
-    ).first()
+    )
+    if exclude_booking is not None:
+        # Rescheduling: a booking does not clash with its own old slot.
+        clash = clash.exclude(pk=exclude_booking.pk)
+    clash = clash.first()
     if clash is not None:
         which = 'room' if clash.room_id == room.id else 'engineer'
         return False, f'That {which} is already booked for part of that time.'

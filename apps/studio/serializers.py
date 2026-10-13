@@ -66,6 +66,33 @@ MAX_OPEN_PENDING = 3
 MAX_DAYS_AHEAD = 90
 
 
+def check_start(value):
+    """A session start the studio can actually offer. Shared by create and
+    reschedule so the two can never disagree about what is bookable."""
+    local = value.astimezone(STUDIO_TZ)
+    if local.minute or local.second or local.microsecond:
+        raise serializers.ValidationError('Sessions start on the hour.')
+    if value <= timezone.now():
+        raise serializers.ValidationError('That time has already passed.')
+    if value > timezone.now() + timedelta(days=MAX_DAYS_AHEAD):
+        raise serializers.ValidationError(f'Bookings open up to {MAX_DAYS_AHEAD} days ahead.')
+    if not OPEN_HOUR <= local.hour < CLOSE_HOUR:
+        raise serializers.ValidationError(
+            f'The studio is open {OPEN_HOUR:02d}:00 to {CLOSE_HOUR:02d}:00.')
+    return value
+
+
+def check_closing(start, hours):
+    """End time for a session, refusing one that runs past closing."""
+    end = start + timedelta(hours=hours)
+    closes = start.astimezone(STUDIO_TZ).replace(hour=CLOSE_HOUR, minute=0, second=0,
+                                                  microsecond=0)
+    if end.astimezone(STUDIO_TZ) > closes:
+        raise serializers.ValidationError(
+            {'hours': f'That runs past closing time ({CLOSE_HOUR:02d}:00).'})
+    return end
+
+
 class BookingSerializer(serializers.ModelSerializer):
     """What a customer sees of their booking. Catalogue rows are nested
     read-only so the dashboard needs no second request."""
@@ -75,12 +102,13 @@ class BookingSerializer(serializers.ModelSerializer):
     service = ServiceSerializer(read_only=True)
     total_display = serializers.CharField(read_only=True)
     duration_minutes = serializers.IntegerField(read_only=True)
+    can_change = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = StudioBooking
         fields = ('id', 'reference', 'status', 'room', 'engineer', 'service',
                   'start_at', 'end_at', 'duration_minutes', 'total_pesewas', 'total_display',
-                  'notes', 'created_at')
+                  'notes', 'created_at', 'can_change')
         read_only_fields = fields
 
 
@@ -105,28 +133,11 @@ class BookingCreateSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
     def validate_start_at(self, value):
-        local = value.astimezone(STUDIO_TZ)
-        if local.minute or local.second or local.microsecond:
-            raise serializers.ValidationError('Sessions start on the hour.')
-        if value <= timezone.now():
-            raise serializers.ValidationError('That time has already passed.')
-        if value > timezone.now() + timedelta(days=MAX_DAYS_AHEAD):
-            raise serializers.ValidationError(
-                f'Bookings open up to {MAX_DAYS_AHEAD} days ahead.')
-        if not OPEN_HOUR <= local.hour < CLOSE_HOUR:
-            raise serializers.ValidationError(
-                f'The studio is open {OPEN_HOUR:02d}:00 to {CLOSE_HOUR:02d}:00.')
-        return value
+        return check_start(value)
 
     def validate(self, attrs):
         start = attrs['start_at']
-        end = start + timedelta(hours=attrs['hours'])
-
-        local_start = start.astimezone(STUDIO_TZ)
-        closes = local_start.replace(hour=CLOSE_HOUR, minute=0, second=0, microsecond=0)
-        if end.astimezone(STUDIO_TZ) > closes:
-            raise serializers.ValidationError(
-                {'hours': f'That runs past closing time ({CLOSE_HOUR:02d}:00).'})
+        end = check_closing(start, attrs['hours'])
 
         customer = self.context['request'].user
         open_pending = StudioBooking.objects.filter(
@@ -149,3 +160,43 @@ class BookingCreateSerializer(serializers.Serializer):
     def create(self, validated):
         validated.pop('hours')  # folded into end_at
         return StudioBooking.objects.create(customer=self.context['request'].user, **validated)
+
+
+class BookingRescheduleSerializer(serializers.Serializer):
+    """
+    POST /studio/bookings/{id}/reschedule/  {"start_at": ...}
+
+    Moves the session to a new start, keeping room, engineer and length — so
+    the price, frozen at creation, does not change. A different room or
+    length is a new booking. The booking's own old slot does not count as a
+    clash; the exclusion constraint still guards the race.
+    """
+
+    start_at = serializers.DateTimeField()
+
+    def validate_start_at(self, value):
+        return check_start(value)
+
+    def validate(self, attrs):
+        booking = self.context['booking']
+        if not booking.can_change:
+            raise serializers.ValidationError(
+                'Only upcoming pending or confirmed bookings can be moved.')
+        hours = booking.duration_minutes // 60
+        start = attrs['start_at']
+        end = check_closing(start, hours)
+        if start == booking.start_at:
+            raise serializers.ValidationError({'start_at': 'That is already the booked time.'})
+        ok, why = is_free(room=booking.room, engineer=booking.engineer,
+                          start_at=start, end_at=end, exclude_booking=booking)
+        if not ok:
+            raise serializers.ValidationError({'start_at': why})
+        attrs['end_at'] = end
+        return attrs
+
+
+class BookingSummarySerializer(serializers.Serializer):
+    upcoming_count = serializers.IntegerField()
+    pending_count = serializers.IntegerField()
+    upcoming_hours = serializers.IntegerField()
+    next = BookingSerializer(allow_null=True)

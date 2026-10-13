@@ -284,6 +284,18 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
         return self.status in SLOT_HOLDING_STATUSES
 
     @property
+    def can_change(self) -> bool:
+        """
+        May the customer still cancel or move this booking?
+
+        Any time before the session starts, while it holds a slot. This is the
+        v0.1 rule while no money moves; ONA sets the real cancellation window
+        (and what is refunded) with payments in Phase 2.
+        """
+        from django.utils import timezone
+        return self.holds_slot and self.start_at > timezone.now() and not self.is_deleted
+
+    @property
     def duration_minutes(self) -> int:
         return int((self.end_at - self.start_at).total_seconds() // 60)
 
