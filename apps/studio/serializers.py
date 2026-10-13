@@ -16,7 +16,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .availability import CLOSE_HOUR, OPEN_HOUR, STUDIO_TZ, is_free
-from .models import Engineer, Room, Service, StudioBooking
+from .models import BookingStatus, Engineer, Room, Service, StudioBooking
 
 
 class RoomSerializer(serializers.ModelSerializer):
@@ -49,7 +49,8 @@ class ServiceSerializer(serializers.ModelSerializer):
 class SlotSerializer(serializers.Serializer):
     start_at = serializers.DateTimeField()
     end_at = serializers.DateTimeField()
-    state = serializers.ChoiceField(choices=['available', 'booked', 'maintenance', 'holiday'])
+    state = serializers.ChoiceField(
+        choices=['available', 'booked', 'maintenance', 'holiday', 'past'])
 
 
 # ---------------------------------------------------------------------------
@@ -57,6 +58,12 @@ class SlotSerializer(serializers.Serializer):
 # ---------------------------------------------------------------------------
 
 MIN_HOURS, MAX_HOURS = 1, CLOSE_HOUR - OPEN_HOUR
+
+# Slot-squatting defence while bookings hold a slot without payment (until
+# Phase 2 adds payment and expiry of stale holds). A customer may hold at
+# most this many pending bookings, no further ahead than this.
+MAX_OPEN_PENDING = 3
+MAX_DAYS_AHEAD = 90
 
 
 class BookingSerializer(serializers.ModelSerializer):
@@ -103,6 +110,9 @@ class BookingCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError('Sessions start on the hour.')
         if value <= timezone.now():
             raise serializers.ValidationError('That time has already passed.')
+        if value > timezone.now() + timedelta(days=MAX_DAYS_AHEAD):
+            raise serializers.ValidationError(
+                f'Bookings open up to {MAX_DAYS_AHEAD} days ahead.')
         if not OPEN_HOUR <= local.hour < CLOSE_HOUR:
             raise serializers.ValidationError(
                 f'The studio is open {OPEN_HOUR:02d}:00 to {CLOSE_HOUR:02d}:00.')
@@ -117,6 +127,15 @@ class BookingCreateSerializer(serializers.Serializer):
         if end.astimezone(STUDIO_TZ) > closes:
             raise serializers.ValidationError(
                 {'hours': f'That runs past closing time ({CLOSE_HOUR:02d}:00).'})
+
+        customer = self.context['request'].user
+        open_pending = StudioBooking.objects.filter(
+            customer=customer, status=BookingStatus.PENDING, end_at__gt=timezone.now(),
+        ).count()
+        if open_pending >= MAX_OPEN_PENDING:
+            raise serializers.ValidationError(
+                f'You already have {open_pending} bookings waiting for confirmation. '
+                'ONA will confirm or release them before you can add more.')
 
         ok, why = is_free(room=attrs['room'], engineer=attrs['engineer'],
                           start_at=start, end_at=end)

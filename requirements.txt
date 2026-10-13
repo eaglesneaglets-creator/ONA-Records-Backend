@@ -29,3 +29,6 @@ pytest-django==4.12.0
 pytest-cov==7.1.0
 # 3.3.3 declares Django support only through 5.1; works on 5.2 in practice.
 factory-boy==3.3.3
+# Error tracking. Imported by production.py only when SENTRY_DSN is set —
+# without it here, setting the DSN crashed the app on start.
+sentry-sdk[django,celery]==2.72.0

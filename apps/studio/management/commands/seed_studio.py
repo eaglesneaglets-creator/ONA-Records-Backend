@@ -89,7 +89,7 @@ class Command(BaseCommand):
         created = updated = 0
         for row in rows:
             defaults = {k: v for k, v in row.items() if k != 'name'}
-            _, was_created = model.all_objects.update_or_create(name=row['name'], defaults=defaults)
+            _, was_created = model.objects.update_or_create(name=row['name'], defaults=defaults)
             created += was_created
             updated += not was_created
         return created, updated

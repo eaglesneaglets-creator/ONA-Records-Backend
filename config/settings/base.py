@@ -62,6 +62,10 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'config.urls'
+
+# Django admin path. Not secret, but off the default so it is not the first
+# thing every scanner tries. Set per environment.
+ADMIN_URL = config('ADMIN_URL', default='admin/')
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
@@ -115,6 +119,12 @@ REST_FRAMEWORK = {
     'DEFAULT_THROTTLE_RATES': {
         'anon': '30/hour',
         'user': '300/hour',
+        # Browsing the catalogue and calendar must not use up the budget
+        # that guards login and registration — they had one shared bucket.
+        'public': '1200/hour',
+        # Creating bookings. Holds a slot without payment until Phase 2, so
+        # this is part of the slot-squatting defence, with the per-customer cap.
+        'booking': '30/hour',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.handler.api_exception_handler',
 }
@@ -132,6 +142,9 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
+    # Tokens carry a hash of the password; changing or resetting it ends
+    # every existing session, including one an attacker already holds.
+    'CHECK_REVOKE_TOKEN': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'AUTH_HEADER_TYPES': ('Bearer',),
 }

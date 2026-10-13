@@ -17,7 +17,9 @@ from apps.studio.models import BlockKind, BookingStatus, CalendarBlock, Engineer
 pytestmark = pytest.mark.django_db
 
 TZ = ZoneInfo('Africa/Accra')
-DAY = date(2026, 11, 2)
+# Always in the future: past slots are reported as 'past', so a fixed date
+# would start failing the day it went by.
+DAY = date.today() + timedelta(days=21)
 
 
 def at(hour, day=DAY):
@@ -132,9 +134,12 @@ class TestCalendarEndpoint:
     def test_public_and_defaults_to_two_weeks(self, api, world):
         res = api.get(reverse('studio:calendar'), {'room': world['room'].id})
         assert res.status_code == 200
-        assert res.data['from'] == date.today()
+        from django.utils import timezone
+        assert res.data['from'] == timezone.localdate()
         assert (res.data['to'] - res.data['from']).days == 13
         assert len(res.data['slots']) == 14 * (CLOSE_HOUR - OPEN_HOUR)
+        # Today's earlier hours may be 'past'; nothing else is.
+        assert {s['state'] for s in res.data['slots']} <= {'available', 'past'}
         assert {'start_at', 'end_at', 'state'} == set(res.data['slots'][0])
 
     def test_reports_all_four_states_and_no_identity(self, api, world):

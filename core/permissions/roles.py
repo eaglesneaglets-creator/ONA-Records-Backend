@@ -162,9 +162,12 @@ class IsNotSuspended(BasePermission):
     """
     Deny suspended accounts on their very next request.
 
-    Wire into DEFAULT_PERMISSION_CLASSES. Without it a suspended user keeps
-    full API access until their access token expires — and can refresh it —
-    because JWT auth never re-reads the database. On a platform where
+    NOT currently wired in, and not needed for that: simplejwt 5.5's
+    JWTAuthentication rejects inactive users on every request, and the
+    refresh view re-checks is_active. Keep this for an explicit per-view
+    check if suspension ever becomes separate from is_active. (The old
+    note said a suspended user kept access until the token expired —
+    true of older simplejwt, not of the version pinned here.) On a platform where
     suspension usually follows a payment dispute, a 30-minute window of
     continued access is not acceptable.
 

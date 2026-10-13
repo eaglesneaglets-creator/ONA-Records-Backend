@@ -11,6 +11,8 @@ import logging
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
+
+from .tokens import email_verification_token
 from django.core.mail import send_mail
 from django.conf import settings
 from django.utils.encoding import force_bytes, force_str
@@ -74,7 +76,7 @@ def _send_verification_email(user) -> None:
     briefly down would be worse than an unverified account.
     """
     uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
+    token = email_verification_token.make_token(user)
     link = f'{settings.FRONTEND_URL}/verify-email?uid={uid}&token={token}'
 
     try:
@@ -194,7 +196,7 @@ class VerifyEmailView(GenericAPIView):
             return Response({'detail': 'This verification link is not valid.'},
                             status=status.HTTP_400_BAD_REQUEST)
 
-        if not default_token_generator.check_token(user, token):
+        if not email_verification_token.check_token(user, token):
             return Response(
                 {'detail': 'This verification link has expired or has already been used. '
                            'Request a new one.'},

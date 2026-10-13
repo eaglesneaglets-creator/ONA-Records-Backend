@@ -106,6 +106,15 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='ONA Records <no-reply@onarecords.com>')
 
 # ---------------------------------------------------------------------------
+# Behind Railway's proxy: exactly one hop appends to X-Forwarded-For. Without
+# this DRF keys throttles on the whole header, which the client controls, so a
+# random header per request bypassed every rate limit.
+REST_FRAMEWORK = {  # noqa: F405
+    **REST_FRAMEWORK,  # noqa: F405
+    'NUM_PROXIES': config('NUM_PROXIES', default=1, cast=int),
+}
+
+# ---------------------------------------------------------------------------
 # Sentry — optional
 # ---------------------------------------------------------------------------
 SENTRY_DSN = config('SENTRY_DSN', default='')

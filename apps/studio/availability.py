@@ -22,6 +22,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db.models import Q
+from django.utils import timezone
 
 from .models import BlockKind, CalendarBlock, SLOT_HOLDING_STATUSES, StudioBooking
 
@@ -35,6 +36,9 @@ SLOT_MINUTES = 60
 MAX_RANGE_DAYS = 31
 
 AVAILABLE, BOOKED, MAINTENANCE, HOLIDAY = 'available', 'booked', 'maintenance', 'holiday'
+# Not one of the four SRS states: a slot that has already started. Shown as
+# unavailable rather than 'available' — the booking endpoint would refuse it.
+PAST = 'past'
 
 
 @dataclass(frozen=True)
@@ -107,18 +111,19 @@ def availability(*, start: date, end: date, room=None, engineer=None) -> list[Sl
             ).values_list('start_at', 'end_at')
         )
 
+    now = timezone.now()
     slots: list[Slot] = []
     day = start
     while day <= end:
         for s, e in day_slots(day):
-            state = AVAILABLE
+            state = AVAILABLE if s > now else PAST
             for kind, bs, be in blocks:
                 if _overlaps(s, e, bs, be):
                     if kind == BlockKind.HOLIDAY:
                         state = HOLIDAY
                         break
                     state = MAINTENANCE
-            if state == AVAILABLE:
+            if state in (AVAILABLE, PAST):
                 for bs, be in bookings:
                     if _overlaps(s, e, bs, be):
                         state = BOOKED

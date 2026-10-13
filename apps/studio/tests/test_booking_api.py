@@ -139,8 +139,8 @@ class TestRace:
         with mock.patch('apps.studio.serializers.is_free', return_value=(True, '')):
             res = api.post(LIST(), payload(world), format='json')
         assert res.status_code == 409
-        assert res.data['code'] == 'slot_taken'
-        assert 'room' in res.data['detail']
+        assert res.data['error']['code'] == 'slot_taken'
+        assert 'room' in str(res.data['error']['detail'])
         assert StudioBooking.objects.filter(customer=world['customer']).count() == 0
 
 

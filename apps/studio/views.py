@@ -17,11 +17,14 @@ BOOKINGS (customer)
     POST /api/v1/studio/bookings/     GET /api/v1/studio/bookings/[{id}/]
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
+from rest_framework.exceptions import APIException
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -29,7 +32,7 @@ from rest_framework.views import APIView
 from core.permissions.roles import IsCustomer, IsOwnerOrONAAdmin
 
 from .availability import MAX_RANGE_DAYS, availability
-from .models import Engineer, Room, Service, StudioBooking
+from .models import Engineer, Room, Service, StudioBooking, constraint_name
 from .serializers import (
     BookingCreateSerializer, BookingSerializer, EngineerSerializer, RoomSerializer,
     ServiceSerializer, SlotSerializer,
@@ -38,6 +41,8 @@ from .serializers import (
 
 class CatalogueViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'public'
     search_fields = ('name', 'description')
     ordering_fields = ('name',)
 
@@ -72,7 +77,7 @@ class CalendarQuerySerializer(serializers.Serializer):
     end = serializers.DateField(required=False)
 
     def validate(self, attrs):
-        start = attrs.get('start') or date.today()
+        start = attrs.get('start') or timezone.localdate()
         end = attrs.get('end') or start + timedelta(days=13)
         if end < start:
             raise serializers.ValidationError({'to': 'Must not be before "from".'})
@@ -92,6 +97,8 @@ class CalendarView(APIView):
     """
 
     permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'public'
 
     @extend_schema(
         parameters=[
@@ -122,6 +129,12 @@ class CalendarView(APIView):
         })
 
 
+class SlotTaken(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_code = 'slot_taken'
+    default_detail = 'That time was booked by someone else just now. Please pick another.'
+
+
 class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
                      mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """
@@ -139,11 +152,20 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
             return [IsAuthenticated(), IsCustomer()]
         return super().get_permissions()
 
+    def get_throttles(self):
+        # Creating holds a slot; reading your own list does not.
+        if self.action == 'create':
+            self.throttle_scope = 'booking'
+            return [ScopedRateThrottle()]
+        return super().get_throttles()
+
     def get_serializer_class(self):
         return BookingCreateSerializer if self.action == 'create' else BookingSerializer
 
     def get_queryset(self):
         qs = StudioBooking.objects.select_related('room', 'engineer', 'service')
+        if getattr(self, 'swagger_fake_view', False):  # schema generation
+            return qs.none()
         u = self.request.user
         if u.role == 'admin' or u.is_superuser:
             return qs
@@ -157,14 +179,14 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
                 booking = ser.save()
         except IntegrityError as exc:
             # Validation passed a moment ago; another request won the race
-            # and the exclusion constraint refused this one. Same sentence
-            # the validator would have given, not a 500.
-            which = 'engineer' if 'engineer_overlap' in str(exc) else 'room'
-            return Response(
-                {'detail': f'That {which} was booked by someone else just now. '
-                           'Please pick another time.',
-                 'code': 'slot_taken'},
-                status=status.HTTP_409_CONFLICT,
-            )
+            # and the exclusion constraint refused this one. Only the overlap
+            # constraints mean that — anything else is a real error and must
+            # not be reported to the customer as "slot taken".
+            name = constraint_name(exc)
+            if not name.endswith(('_room_overlap', '_engineer_overlap')):
+                raise
+            which = 'engineer' if name.endswith('_engineer_overlap') else 'room'
+            raise SlotTaken(f'That {which} was booked by someone else just now. '
+                            'Please pick another time.')
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data,
                         status=status.HTTP_201_CREATED)

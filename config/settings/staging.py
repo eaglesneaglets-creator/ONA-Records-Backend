@@ -129,6 +129,8 @@ REST_FRAMEWORK = {  # noqa: F405
     'DEFAULT_THROTTLE_RATES': {
         'anon': '200/hour',
         'user': '2000/hour',
+        'public': '5000/hour',
+        'booking': '200/hour',
         'otp': '50/hour',
     },
 }

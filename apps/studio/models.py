@@ -63,7 +63,7 @@ class CatalogueItem(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     here (rather than inherited) so it carries CatalogueQuerySet.
     """
 
-    name = models.CharField(max_length=120, unique=True)
+    name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(
         default=True, db_index=True,
@@ -80,6 +80,15 @@ class CatalogueItem(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     class Meta:
         abstract = True
         ordering = ('sort_order', 'name')
+        constraints = [
+            # Unique among live rows. A plain unique=True clashed with soft
+            # delete: admin's form check cannot see deleted rows, so reusing a
+            # deleted room's name passed validation and then failed the insert.
+            models.UniqueConstraint(
+                fields=['name'], condition=models.Q(deleted_at__isnull=True),
+                name='%(app_label)s_%(class)s_name_live_unique',
+            ),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -194,6 +203,12 @@ class BookingStatus(models.TextChoices):
 SLOT_HOLDING_STATUSES = (BookingStatus.PENDING, BookingStatus.CONFIRMED)
 
 
+def constraint_name(exc: Exception) -> str:
+    """The Postgres constraint an IntegrityError came from, or ''."""
+    diag = getattr(getattr(exc, '__cause__', None), 'diag', None)
+    return getattr(diag, 'constraint_name', None) or ''
+
+
 def generate_reference() -> str:
     """ONA-7F3A2C — short, unambiguous, not sequential (see UUIDPrimaryKeyMixin
     for why volume must not leak). Collision is handled at save time."""
@@ -285,7 +300,8 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
                 with transaction.atomic():
                     return super().save(*args, **kwargs)
             except IntegrityError as exc:
-                if 'reference' in str(exc) and attempt < 4 and self._state.adding:
+                if ('reference' in constraint_name(exc) and attempt < 4
+                        and self._state.adding):
                     self.reference = generate_reference()
                     continue
                 raise

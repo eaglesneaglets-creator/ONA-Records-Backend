@@ -29,7 +29,13 @@ urlpatterns = [
     path('api/v1/health/', health, name='health'),
     path('api/v1/auth/', include('apps.accounts.urls')),
     path('api/v1/studio/', include('apps.studio.urls')),
-    path('admin/', admin.site.urls),
-    path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
-    path('api/v1/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='docs'),
+    path(settings.ADMIN_URL, admin.site.urls),
 ]
+
+# The API map is useful in development and staging and a free reconnaissance
+# document in production.
+if getattr(settings, 'ENVIRONMENT_NAME', 'production') != 'production':
+    urlpatterns += [
+        path('api/v1/schema/', SpectacularAPIView.as_view(), name='schema'),
+        path('api/v1/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='docs'),
+    ]
