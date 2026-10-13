@@ -10,6 +10,11 @@ import dj_database_url
 
 DEBUG = True
 
+# Reported by /api/v1/health/. Without this the local server answers
+# 'production', which defeats the point of that endpoint naming the
+# environment at all.
+ENVIRONMENT_NAME = 'local'
+
 # WhiteNoise is a production static-file server. Keeping it in local/test
 # middleware adds no coverage and warns on every request before collectstatic
 # has created STATIC_ROOT. Django's development server handles static files.
