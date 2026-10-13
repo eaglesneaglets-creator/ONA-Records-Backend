@@ -99,10 +99,15 @@ def mark_succeeded(txn: Transaction, provider_ref: str | None = None,
     if provider_ref:
         txn.provider_ref = provider_ref
     txn.save(update_fields=['status', 'provider_ref', 'updated_at'])
-    return LedgerEntry.objects.create(
+    hold = LedgerEntry.objects.create(
         transaction=txn, entry_type=EntryType.HOLD, amount_pesewas=txn.amount_pesewas,
         beneficiary=Beneficiary.ONA, created_by=actor,
     )
+    # Same database transaction as the hold: a receipt exists exactly when
+    # the money does.
+    from apps.payments.documents import issue_receipt
+    issue_receipt(txn)
+    return hold
 
 
 @db.atomic

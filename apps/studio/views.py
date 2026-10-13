@@ -20,6 +20,8 @@ BOOKINGS (customer)
 from datetime import timedelta
 
 from django.db import IntegrityError, transaction
+from django.db.models import Exists, OuterRef
+from django.http import HttpResponse
 from django.utils import timezone
 from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import mixins, serializers, status, viewsets
@@ -150,6 +152,8 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
     GET  /studio/bookings/summary/            dashboard numbers for the caller
     POST /studio/bookings/{id}/cancel/        releases the slot
     POST /studio/bookings/{id}/reschedule/    new start, same room/engineer/length
+    GET  /studio/bookings/{id}/invoice/       PDF (issued now if an older booking has none)
+    GET  /studio/bookings/{id}/receipt/       PDF, 404 until a payment is confirmed
 
     Cancel and reschedule are recorded in AuditLog: they change what a
     customer has agreed to, and "who moved my session?" must be answerable.
@@ -173,7 +177,10 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         return BookingCreateSerializer if self.action == 'create' else BookingSerializer
 
     def get_queryset(self):
-        qs = StudioBooking.objects.select_related('room', 'engineer', 'service')
+        from apps.payments.models import Receipt
+
+        qs = StudioBooking.objects.select_related('room', 'engineer', 'service').annotate(
+            has_receipt=Exists(Receipt.objects.filter(transaction__booking=OuterRef('pk'))))
         if getattr(self, 'swagger_fake_view', False):  # schema generation
             return qs.none()
         u = self.request.user
@@ -262,3 +269,34 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
                             'Please pick another time.')
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def invoice(self, request, pk=None):
+        from apps.payments.documents import issue_invoice
+        from apps.payments.pdf import render_invoice
+
+        booking = self.get_object()
+        inv = issue_invoice(booking)  # idempotent; covers bookings made before Task 10
+        return _pdf(render_invoice(inv), f'ONA-invoice-{inv.number}.pdf')
+
+    @action(detail=True, methods=['get'])
+    def receipt(self, request, pk=None):
+        from apps.payments.models import Receipt
+        from apps.payments.pdf import render_receipt
+
+        booking = self.get_object()
+        rec = (Receipt.objects.filter(transaction__booking=booking)
+               .select_related('transaction__booking__customer', 'transaction__booking__room')
+               .order_by('-issued_at').first())
+        if rec is None:
+            return Response({'detail': 'No payment has been confirmed for this booking yet.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return _pdf(render_receipt(rec), f'ONA-receipt-{rec.number}.pdf')
+
+
+def _pdf(content: bytes, filename: str) -> HttpResponse:
+    res = HttpResponse(content, content_type='application/pdf')
+    res['Content-Disposition'] = f'attachment; filename="{filename}"'
+    # Personal financial documents: never cached by a shared proxy.
+    res['Cache-Control'] = 'private, no-store'
+    return res

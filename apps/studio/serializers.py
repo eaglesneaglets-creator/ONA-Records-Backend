@@ -103,12 +103,19 @@ class BookingSerializer(serializers.ModelSerializer):
     total_display = serializers.CharField(read_only=True)
     duration_minutes = serializers.IntegerField(read_only=True)
     can_change = serializers.BooleanField(read_only=True)
+    has_receipt = serializers.SerializerMethodField()
+
+    def get_has_receipt(self, obj) -> bool:
+        annotated = getattr(obj, 'has_receipt', None)  # list views annotate it
+        if annotated is not None:
+            return bool(annotated)
+        return obj.transactions.filter(receipt__isnull=False).exists()
 
     class Meta:
         model = StudioBooking
         fields = ('id', 'reference', 'status', 'room', 'engineer', 'service',
                   'start_at', 'end_at', 'duration_minutes', 'total_pesewas', 'total_display',
-                  'notes', 'created_at', 'can_change')
+                  'notes', 'created_at', 'can_change', 'has_receipt')
         read_only_fields = fields
 
 
@@ -158,8 +165,15 @@ class BookingCreateSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated):
+        from apps.payments.documents import issue_invoice
+
         validated.pop('hours')  # folded into end_at
-        return StudioBooking.objects.create(customer=self.context['request'].user, **validated)
+        booking = StudioBooking.objects.create(customer=self.context['request'].user,
+                                               **validated)
+        # Same transaction as the booking (the view wraps save() in atomic):
+        # every booking has its invoice from the moment it exists.
+        issue_invoice(booking)
+        return booking
 
 
 class BookingRescheduleSerializer(serializers.Serializer):

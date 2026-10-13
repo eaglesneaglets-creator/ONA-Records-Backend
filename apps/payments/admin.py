@@ -9,7 +9,7 @@ a ledger row would bypass every one of them.
 
 from django.contrib import admin
 
-from .models import Commission, LedgerEntry, Transaction
+from .models import Commission, Invoice, LedgerEntry, Receipt, Transaction
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -56,3 +56,17 @@ class LedgerEntryAdmin(ReadOnlyAdmin):
 class CommissionAdmin(ReadOnlyAdmin):
     list_display = ('created_at', 'percent', 'amount_pesewas', 'ledger_entry')
     list_select_related = ('ledger_entry',)
+
+
+@admin.register(Invoice)
+class InvoiceAdmin(ReadOnlyAdmin):
+    list_display = ('number', 'issued_at', 'customer_name', 'booking', 'total_pesewas')
+    search_fields = ('number', 'customer_email', 'booking__reference')
+    list_select_related = ('booking',)
+
+
+@admin.register(Receipt)
+class ReceiptAdmin(ReadOnlyAdmin):
+    list_display = ('number', 'issued_at', 'amount_pesewas', 'transaction')
+    search_fields = ('number', 'transaction__provider_ref')
+    list_select_related = ('transaction',)

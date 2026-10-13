@@ -184,3 +184,74 @@ class Commission(UUIDPrimaryKeyMixin):
 
     def __str__(self) -> str:
         return f'{self.percent}% · {format_ghs(self.amount_pesewas)}'
+
+
+# ---------------------------------------------------------------------------
+# Documents — invoices and receipts (Task 10)
+# ---------------------------------------------------------------------------
+
+class DocumentCounter(models.Model):
+    """
+    Per-kind, per-year sequence for document numbers: INV-2026-00001.
+
+    A row lock (select_for_update) makes numbers gapless and unique under
+    concurrency, which a database sequence does not guarantee (it skips on
+    rollback). Accountants ask about gaps; there should not be any.
+    """
+
+    kind = models.CharField(max_length=3)
+    year = models.PositiveSmallIntegerField()
+    last = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['kind', 'year'], name='payments_doccounter_kind_year'),
+        ]
+
+
+class Invoice(UUIDPrimaryKeyMixin):
+    """
+    What the customer owes for a booking — FROZEN at issue.
+
+    Number, parties, line items and total are copied in when the invoice is
+    issued, so renaming a room or changing a rate later never alters an
+    issued invoice. The session's date and time are deliberately NOT frozen:
+    a booking can be rescheduled without changing what is owed, and the PDF
+    shows the session as it currently stands, labelled as such.
+    """
+
+    booking = models.OneToOneField('studio.StudioBooking', on_delete=models.PROTECT,
+                                   related_name='invoice')
+    number = models.CharField(max_length=20, unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    customer_name = models.CharField(max_length=200)
+    customer_email = models.EmailField()
+    lines = models.JSONField(
+        help_text='[{description, quantity, unit_pesewas, total_pesewas}] — integers only.')
+    total_pesewas = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ('-issued_at',)
+        constraints = [
+            models.CheckConstraint(condition=models.Q(total_pesewas__gt=0),
+                                   name='payments_invoice_total_positive'),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.number} · {format_ghs(self.total_pesewas)}'
+
+
+class Receipt(UUIDPrimaryKeyMixin):
+    """Proof of a confirmed payment. Issued with the HOLD, once per transaction."""
+
+    transaction = models.OneToOneField(Transaction, on_delete=models.PROTECT,
+                                       related_name='receipt')
+    number = models.CharField(max_length=20, unique=True)
+    issued_at = models.DateTimeField(auto_now_add=True)
+    amount_pesewas = models.PositiveIntegerField()
+
+    class Meta:
+        ordering = ('-issued_at',)
+
+    def __str__(self) -> str:
+        return f'{self.number} · {format_ghs(self.amount_pesewas)}'
