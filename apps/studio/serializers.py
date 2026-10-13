@@ -1,18 +1,22 @@
 """
-Public catalogue serializers.
+Studio serializers.
 
-Read-only and deliberately flat. Each money field ships twice — the integer
-pesewas the frontend does arithmetic with, and the formatted GHS string it
-displays — so no client ever re-implements format_ghs and drifts from the
-backend on rounding or thousands separators.
+CATALOGUE — read-only and deliberately flat. Each money field ships twice:
+the integer pesewas the frontend does arithmetic with, and the formatted GHS
+string it displays — so no client ever re-implements format_ghs and drifts
+from the backend on rounding or thousands separators. Nothing internal
+leaks: no deleted_at/deleted_by, no sort_order.
 
-Nothing internal leaks: no deleted_at/deleted_by, no sort_order. The list
-is already ordered; exposing the key invites clients to re-sort by it.
+BOOKINGS — see BookingCreateSerializer for the pricing rule.
 """
 
+from datetime import timedelta
+
+from django.utils import timezone
 from rest_framework import serializers
 
-from .models import Engineer, Room, Service
+from .availability import CLOSE_HOUR, OPEN_HOUR, STUDIO_TZ, is_free
+from .models import Engineer, Room, Service, StudioBooking
 
 
 class RoomSerializer(serializers.ModelSerializer):
@@ -46,3 +50,83 @@ class SlotSerializer(serializers.Serializer):
     start_at = serializers.DateTimeField()
     end_at = serializers.DateTimeField()
     state = serializers.ChoiceField(choices=['available', 'booked', 'maintenance', 'holiday'])
+
+
+# ---------------------------------------------------------------------------
+# Bookings
+# ---------------------------------------------------------------------------
+
+MIN_HOURS, MAX_HOURS = 1, CLOSE_HOUR - OPEN_HOUR
+
+
+class BookingSerializer(serializers.ModelSerializer):
+    """What a customer sees of their booking. Catalogue rows are nested
+    read-only so the dashboard needs no second request."""
+
+    room = RoomSerializer(read_only=True)
+    engineer = EngineerSerializer(read_only=True)
+    service = ServiceSerializer(read_only=True)
+    total_display = serializers.CharField(read_only=True)
+    duration_minutes = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = StudioBooking
+        fields = ('id', 'reference', 'status', 'room', 'engineer', 'service',
+                  'start_at', 'end_at', 'duration_minutes', 'total_pesewas', 'total_display',
+                  'notes', 'created_at')
+        read_only_fields = fields
+
+
+class BookingCreateSerializer(serializers.Serializer):
+    """
+    POST /studio/bookings/
+
+    PRICE: room hourly rate × hours, frozen onto the booking. The service
+    chosen is what the session is for; its base price is informational in
+    v0.1. The "service fee" line in the approved design is ONA's commission,
+    which is still an open question (spec OQ3) and lands with Phase 2.
+
+    Validation gives the customer a sentence. The exclusion constraint gives
+    the guarantee — see views.BookingViewSet.create for the race.
+    """
+
+    room = serializers.PrimaryKeyRelatedField(queryset=Room.objects.active())
+    engineer = serializers.PrimaryKeyRelatedField(queryset=Engineer.objects.active())
+    service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.active())
+    start_at = serializers.DateTimeField()
+    hours = serializers.IntegerField(min_value=MIN_HOURS, max_value=MAX_HOURS)
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
+
+    def validate_start_at(self, value):
+        local = value.astimezone(STUDIO_TZ)
+        if local.minute or local.second or local.microsecond:
+            raise serializers.ValidationError('Sessions start on the hour.')
+        if value <= timezone.now():
+            raise serializers.ValidationError('That time has already passed.')
+        if not OPEN_HOUR <= local.hour < CLOSE_HOUR:
+            raise serializers.ValidationError(
+                f'The studio is open {OPEN_HOUR:02d}:00 to {CLOSE_HOUR:02d}:00.')
+        return value
+
+    def validate(self, attrs):
+        start = attrs['start_at']
+        end = start + timedelta(hours=attrs['hours'])
+
+        local_start = start.astimezone(STUDIO_TZ)
+        closes = local_start.replace(hour=CLOSE_HOUR, minute=0, second=0, microsecond=0)
+        if end.astimezone(STUDIO_TZ) > closes:
+            raise serializers.ValidationError(
+                {'hours': f'That runs past closing time ({CLOSE_HOUR:02d}:00).'})
+
+        ok, why = is_free(room=attrs['room'], engineer=attrs['engineer'],
+                          start_at=start, end_at=end)
+        if not ok:
+            raise serializers.ValidationError({'start_at': why})
+
+        attrs['end_at'] = end
+        attrs['total_pesewas'] = attrs['room'].hourly_rate_pesewas * attrs['hours']
+        return attrs
+
+    def create(self, validated):
+        validated.pop('hours')  # folded into end_at
+        return StudioBooking.objects.create(customer=self.context['request'].user, **validated)
