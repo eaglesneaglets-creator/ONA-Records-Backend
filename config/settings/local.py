@@ -53,3 +53,11 @@ CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
 LOGGING['root']['level'] = 'DEBUG'  # noqa: F405
+
+# E2E and manual testing register and log in far more often than a real
+# visitor. 30/hour (the production anon rate) is exhausted by two Playwright
+# runs. Local only — staging and production keep the real limits.
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    'DEFAULT_THROTTLE_RATES': {'anon': '2000/hour', 'user': '5000/hour'},
+}
