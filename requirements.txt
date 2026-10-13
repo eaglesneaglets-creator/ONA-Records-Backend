@@ -3,8 +3,8 @@
 # Django 5.2 LTS — extended support through April 2028.
 # Do not bump to 6.0/6.1: those are non-LTS feature releases with ~8 month
 # support windows. Next LTS is 6.2.
-Django==5.2.16
-djangorestframework==3.17.1
+Django==5.2.17
+djangorestframework==3.17.2
 djangorestframework-simplejwt==5.5.1
 django-cors-headers==4.9.0
 django-filter==26.1
