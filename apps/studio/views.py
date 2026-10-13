@@ -32,6 +32,8 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.notifications.dispatch import notify_booking
+from apps.notifications.models import Kind
 from core.models import AuditLog
 from core.permissions.roles import IsCustomer, IsOwnerOrONAAdmin
 
@@ -224,6 +226,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         booking.save(update_fields=['status', 'updated_at'])
         AuditLog.record('booking.cancelled', actor=request.user, target=booking, request=request,
                         reference=booking.reference, previous_status=before)
+        notify_booking(booking, Kind.BOOKING_CANCELLED)
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=['post'])
@@ -248,6 +251,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         AuditLog.record('booking.rescheduled', actor=request.user, target=booking,
                         request=request, reference=booking.reference,
                         from_start=old_start.isoformat(), to_start=booking.start_at.isoformat())
+        notify_booking(booking, Kind.BOOKING_RESCHEDULED)
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data)
 
     def create(self, request, *args, **kwargs):
@@ -267,6 +271,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
             which = 'engineer' if name.endswith('_engineer_overlap') else 'room'
             raise SlotTaken(f'That {which} was booked by someone else just now. '
                             'Please pick another time.')
+        notify_booking(booking, Kind.BOOKING_RECEIVED)
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data,
                         status=status.HTTP_201_CREATED)
 

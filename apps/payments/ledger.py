@@ -105,8 +105,12 @@ def mark_succeeded(txn: Transaction, provider_ref: str | None = None,
     )
     # Same database transaction as the hold: a receipt exists exactly when
     # the money does.
+    from apps.notifications.dispatch import notify_booking
+    from apps.notifications.models import Kind
     from apps.payments.documents import issue_receipt
     issue_receipt(txn)
+    # After commit: the customer hears about money only once it is on record.
+    notify_booking(txn.booking, Kind.PAYMENT_CONFIRMED)
     return hold
 
 

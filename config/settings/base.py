@@ -230,3 +230,17 @@ LOGGING = {
 # decides whether its own studio bookings carry commission at all (spec OQ3).
 # Changing it affects new transactions only.
 STUDIO_COMMISSION_PERCENT = config('STUDIO_COMMISSION_PERCENT', default=0, cast=int)
+
+# ---------------------------------------------------------------------------
+# Scheduled jobs (Celery beat — embedded in the worker, see start-worker.sh)
+# ---------------------------------------------------------------------------
+# A sweep, not per-booking ETA tasks: with Redis, tasks scheduled far ahead
+# are redelivered after the visibility timeout and can send twice. The sweep
+# is idempotent (NotificationLog.dedupe_key), follows reschedules and
+# cancellations, and survives a worker restart.
+CELERY_BEAT_SCHEDULE = {
+    'send-due-reminders': {
+        'task': 'apps.notifications.tasks.send_due_reminders',
+        'schedule': 15 * 60,
+    },
+}

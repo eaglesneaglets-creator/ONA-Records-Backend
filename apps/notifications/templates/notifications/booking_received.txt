@@ -1,0 +1,17 @@
+{% autoescape off %}Hello {{ name }},
+
+We have your booking.
+
+  Reference: {{ reference }}
+  Session:   {{ when }}
+  Room:      {{ room }}, with {{ engineer }}
+  For:       {{ service }}
+  Total:     {{ total }}
+{% if pending %}
+It is held for you while ONA confirms it. No payment has been taken yet.
+{% endif %}
+Your invoice is attached. You can move or cancel the session any time before
+it starts from your bookings page:
+{{ bookings_url }}
+
+ONA Records{% endautoescape %}

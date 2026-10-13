@@ -1,0 +1,10 @@
+{% autoescape off %}Hello {{ name }},
+
+Your booking {{ reference }} for {{ when }} has been cancelled, and the time
+has been released.
+
+If you did not ask for this, reply to this email and we will look into it.
+
+Book another session: {{ bookings_url }}
+
+ONA Records{% endautoescape %}

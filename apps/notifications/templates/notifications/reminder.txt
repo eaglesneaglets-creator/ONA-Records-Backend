@@ -1,0 +1,14 @@
+{% autoescape off %}Hello {{ name }},
+
+A reminder that your session is coming up:
+
+  {{ when }}
+  {{ room }}, with {{ engineer }}
+  Reference: {{ reference }}
+{% if pending %}
+This booking is still awaiting confirmation from ONA. We will be in touch.
+{% endif %}
+Need to move it? You can do that from your bookings page until it starts:
+{{ bookings_url }}
+
+ONA Records{% endautoescape %}

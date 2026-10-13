@@ -1,0 +1,9 @@
+{% autoescape off %}Hello {{ name }},
+
+Confirm your email address to finish setting up your ONA Records account:
+
+{{ link }}
+
+This link expires in 3 days. If you did not create an account, ignore this email.
+
+ONA Records{% endautoescape %}

@@ -1,0 +1,12 @@
+{% autoescape off %}Hello {{ name }},
+
+Your session {{ reference }} has moved. The new time is:
+
+  {{ when }}
+  {{ room }}, with {{ engineer }}
+
+The price has not changed ({{ total }}). The old time has been released.
+
+Your bookings: {{ bookings_url }}
+
+ONA Records{% endautoescape %}

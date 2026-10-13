@@ -1,0 +1,13 @@
+{% autoescape off %}Hello {{ name }},
+
+We have received {{ amount }} for booking {{ reference }}.
+
+  Session: {{ when }}
+  Room:    {{ room }}, with {{ engineer }}
+
+ONA holds the money until your session. If the session cannot go ahead, you
+are refunded in full. Your receipt ({{ receipt_number }}) is attached.
+
+Your bookings: {{ bookings_url }}
+
+ONA Records{% endautoescape %}

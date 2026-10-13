@@ -12,11 +12,13 @@ import logging
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
 
+from apps.notifications.dispatch import notify_account
+from apps.notifications.models import Kind
+
 from .tokens import email_verification_token
-from django.core.mail import send_mail
 from django.conf import settings
-from django.utils.encoding import force_bytes, force_str
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.utils.encoding import force_str
+from django.utils.http import urlsafe_base64_decode
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.generics import GenericAPIView
@@ -69,32 +71,13 @@ def _tokens_for(user) -> dict:
 
 def _send_verification_email(user) -> None:
     """
-    Send the verification link.
+    Queue the verification email (apps/notifications).
 
-    Failure here must not fail registration: the account exists, and the user
-    can request a new link. Losing the account because an SMTP host was
-    briefly down would be worse than an unverified account.
+    Never fails registration: the account exists, and the user can request
+    a new link. The link is built in the worker from the user id, so the
+    token never sits in the broker.
     """
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = email_verification_token.make_token(user)
-    link = f'{settings.FRONTEND_URL}/verify-email?uid={uid}&token={token}'
-
-    try:
-        send_mail(
-            subject='Confirm your email address',
-            message=(
-                f'Hello{" " + user.first_name if user.first_name else ""},\n\n'
-                f'Confirm your email address to finish setting up your ONA Records account:\n\n'
-                f'{link}\n\n'
-                f'This link expires in 3 days. If you did not create an account, ignore this email.\n\n'
-                f'ONA Records'
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[user.email],
-            fail_silently=False,
-        )
-    except Exception:
-        logger.exception('Verification email failed for user %s', user.pk)
+    notify_account(user, Kind.VERIFY_EMAIL)
 
 
 class RegisterView(GenericAPIView):
@@ -233,25 +216,10 @@ class PasswordResetRequestView(GenericAPIView):
 
         user = User.objects.filter(email__iexact=email, is_active=True).first()
         if user:
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            link = f'{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}'
-            try:
-                send_mail(
-                    subject='Reset your password',
-                    message=(
-                        f'Someone asked to reset the password for this ONA Records account.\n\n'
-                        f'{link}\n\n'
-                        f'This link expires in 3 days and can only be used once. '
-                        f'If it was not you, ignore this email — your password has not changed.\n\n'
-                        f'ONA Records'
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    fail_silently=False,
-                )
-            except Exception:
-                logger.exception('Password reset email failed for user %s', user.pk)
+            # Off the request thread: answering only after an SMTP round trip
+            # for real accounts made response time reveal which addresses
+            # are registered.
+            notify_account(user, Kind.PASSWORD_RESET)
 
         # Identical response whether or not the account exists. Otherwise this
         # endpoint becomes a way to check which addresses are registered.
