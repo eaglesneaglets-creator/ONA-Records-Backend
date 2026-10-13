@@ -40,3 +40,9 @@ class ServiceSerializer(serializers.ModelSerializer):
         fields = ('id', 'name', 'description', 'base_price_pesewas', 'base_price_display',
                   'duration_minutes')
         read_only_fields = fields
+
+
+class SlotSerializer(serializers.Serializer):
+    start_at = serializers.DateTimeField()
+    end_at = serializers.DateTimeField()
+    state = serializers.ChoiceField(choices=['available', 'booked', 'maintenance', 'holiday'])

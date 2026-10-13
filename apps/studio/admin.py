@@ -9,7 +9,7 @@ glance rather than discovered by a customer.
 
 from django.contrib import admin
 
-from .models import Engineer, Room, Service
+from .models import CalendarBlock, Engineer, Room, Service, StudioBooking
 
 
 class CatalogueAdmin(admin.ModelAdmin):
@@ -49,3 +49,35 @@ class ServiceAdmin(CatalogueAdmin):
     list_editable = ('is_active', 'sort_order')
     fields = ('name', 'description', 'base_price_pesewas', 'duration_minutes', 'is_active',
               'sort_order', 'id', 'created_at', 'updated_at', 'deleted_at', 'deleted_by')
+
+
+@admin.register(CalendarBlock)
+class CalendarBlockAdmin(admin.ModelAdmin):
+    list_display = ('kind', 'room', 'engineer', 'start_at', 'end_at', 'reason')
+    list_filter = ('kind', 'room', 'engineer')
+    date_hierarchy = 'start_at'
+    ordering = ('-start_at',)
+
+
+@admin.register(StudioBooking)
+class StudioBookingAdmin(admin.ModelAdmin):
+    """
+    Read-mostly. Creating a booking here bypasses availability validation;
+    the exclusion constraint still refuses an overlap, but as a raw database
+    error rather than a sentence. Staff create bookings through the ONA
+    admin dashboard (Phase 3), which validates first.
+    """
+    list_display = ('reference', 'customer', 'room', 'engineer', 'start_at', 'end_at',
+                    'status', 'total_display')
+    list_filter = ('status', 'room', 'engineer')
+    search_fields = ('reference', 'customer__email', 'customer__first_name',
+                     'customer__last_name')
+    date_hierarchy = 'start_at'
+    ordering = ('-start_at',)
+    readonly_fields = ('id', 'reference', 'total_pesewas', 'created_at', 'updated_at',
+                       'deleted_at', 'deleted_by')
+    raw_id_fields = ('customer',)
+
+    def get_queryset(self, request):
+        return StudioBooking.all_objects.get_queryset().select_related(
+            'customer', 'room', 'engineer')
