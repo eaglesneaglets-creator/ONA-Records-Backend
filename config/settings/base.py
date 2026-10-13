@@ -221,3 +221,12 @@ LOGGING = {
         'django.request': {'handlers': ['console'], 'level': 'ERROR', 'propagate': False},
     },
 }
+
+# ---------------------------------------------------------------------------
+# Commission
+# ---------------------------------------------------------------------------
+# Whole percent taken by ONA on studio-booking payments, frozen onto each
+# Transaction when it is created (apps/payments/ledger.py). 0 until ONA
+# decides whether its own studio bookings carry commission at all (spec OQ3).
+# Changing it affects new transactions only.
+STUDIO_COMMISSION_PERCENT = config('STUDIO_COMMISSION_PERCENT', default=0, cast=int)
