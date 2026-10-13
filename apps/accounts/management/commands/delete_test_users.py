@@ -100,7 +100,15 @@ class Command(BaseCommand):
             # Bookings PROTECT their customer (money records must not vanish
             # by cascade). These are test accounts, so remove their bookings
             # outright first — soft-deleting would still block the delete.
+            from apps.payments.models import Invoice, Transaction
             from apps.studio.models import StudioBooking
+            # Money records are evidence: a test account that ever paid is
+            # not swept automatically. Invoices without payment are fine to go.
+            if Transaction.objects.filter(customer__email__in=found_emails).exists():
+                raise CommandError(
+                    'Refusing: some of these accounts have payment records. '
+                    'Remove them deliberately, not with a sweep.')
+            Invoice.objects.filter(booking__customer__email__in=found_emails).delete()
             bookings, _ = StudioBooking.all_objects.filter(
                 customer__email__in=found_emails).delete()
             if bookings:
