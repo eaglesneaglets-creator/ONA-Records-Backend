@@ -34,8 +34,13 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "emails",
-            nargs="+",
+            nargs="*",
             help="Email addresses to delete.",
+        )
+        parser.add_argument(
+            "--prefix",
+            help="Also delete every account whose email starts with this "
+                 "(e.g. e2e- for Playwright users).",
         )
         parser.add_argument(
             "--dry-run",
@@ -56,7 +61,12 @@ class Command(BaseCommand):
 
         # Fetch before deleting so the report names what actually existed
         # rather than echoing back the arguments.
-        found = list(User.objects.filter(email__in=emails))
+        if not emails and not options["prefix"]:
+            raise CommandError("Give email addresses, --prefix, or both.")
+        query = User.objects.filter(email__in=emails)
+        if options["prefix"]:
+            query = query | User.objects.filter(email__istartswith=options["prefix"])
+        found = list(query.distinct())
         found_emails = {u.email for u in found}
 
         for email in emails:
@@ -87,6 +97,14 @@ class Command(BaseCommand):
         # One transaction: either all the named accounts go or none do, so a
         # failure part-way cannot leave half a cleanup behind.
         with transaction.atomic():
+            # Bookings PROTECT their customer (money records must not vanish
+            # by cascade). These are test accounts, so remove their bookings
+            # outright first — soft-deleting would still block the delete.
+            from apps.studio.models import StudioBooking
+            bookings, _ = StudioBooking.all_objects.filter(
+                customer__email__in=found_emails).delete()
+            if bookings:
+                self.stdout.write(f"  removed {bookings} booking row(s)")
             count, _ = User.objects.filter(email__in=found_emails).delete()
 
         self.stdout.write(
