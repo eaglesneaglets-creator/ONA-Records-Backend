@@ -51,6 +51,11 @@ EMAIL_BACKEND = config(
 )
 DEFAULT_FROM_EMAIL = 'ONA Records <dev@localhost>'
 
+# Off locally: E2E registers and books in one go, and there is no inbox to
+# click a link from. Staging and production keep the base default (on);
+# pytest switches it on where it is the thing under test.
+BOOKING_REQUIRES_VERIFIED_EMAIL = config('BOOKING_REQUIRES_VERIFIED_EMAIL', default=False, cast=bool)
+
 # Run tasks inline — no Redis or worker needed to develop.
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True

@@ -8,7 +8,7 @@ urls, so "what can staff do over the API?" has one answer.
 """
 
 from django.urls import path
-from rest_framework.routers import DefaultRouter
+from rest_framework.routers import SimpleRouter
 
 from apps.accounts.staff import CustomerStaffViewSet
 from apps.content.views import FaqAdminViewSet
@@ -24,7 +24,8 @@ from apps.studio.staff import StaffBookingViewSet, StaffOverviewView
 
 app_name = 'adminapi'
 
-router = DefaultRouter()
+# SimpleRouter: no browsable index listing every staff endpoint (Task 18).
+router = SimpleRouter()
 router.register('professionals', ProfessionalAdminViewSet, basename='professional')
 router.register('bookings', StaffBookingViewSet, basename='booking')
 router.register('customers', CustomerStaffViewSet, basename='customer')

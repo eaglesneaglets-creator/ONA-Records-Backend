@@ -184,14 +184,24 @@ class UserSerializer(MaskedUserSerializer):
     class recognises self-access and unmasks automatically.
     """
 
+    # True when this customer may not book until they confirm their email
+    # (settings.BOOKING_REQUIRES_VERIFIED_EMAIL) — the booking page shows a
+    # resend banner only when it is.
+    must_verify_email = serializers.SerializerMethodField()
+
     class Meta(MaskedUserSerializer.Meta):
         model = User
         fields = MaskedUserSerializer.Meta.fields + (
             'email', 'first_name', 'last_name', 'phone',
-            'public_ref', 'is_email_verified', 'date_joined',
+            'public_ref', 'is_email_verified', 'date_joined', 'must_verify_email',
         )
         read_only_fields = ('id', 'display_name', 'role', 'email',
                             'public_ref', 'is_email_verified', 'date_joined')
+
+    def get_must_verify_email(self, obj) -> bool:
+        from django.conf import settings
+        return bool(getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True)
+                    and obj.role == 'customer' and not obj.is_email_verified)
 
 
 class PublicUserSerializer(MaskedUserSerializer):

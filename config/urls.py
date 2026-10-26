@@ -6,6 +6,11 @@ from django.http import JsonResponse
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from core.admin_security import LockoutAdminAuthenticationForm
+
+# The Django admin shares the API's per-account sign-in lockout (Task 18).
+admin.site.login_form = LockoutAdminAuthenticationForm
+
 
 def health(request):
     """
@@ -31,7 +36,7 @@ urlpatterns = [
     path('api/v1/studio/', include('apps.studio.urls')),
     path('api/v1/content/', include('apps.content.urls')),
     path('api/v1/admin/', include('config.admin_api')),
-    path(settings.ADMIN_URL, admin.site.urls),
+    path(settings.ADMIN_URL, admin.site.urls),  # login form: core/admin_security.py
 ]
 
 # The API map is useful in development and staging and a free reconnaissance

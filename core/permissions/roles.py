@@ -158,6 +158,18 @@ class IsEmailVerified(BasePermission):
         return bool(u and u.is_authenticated and u.is_email_verified)
 
 
+class VerifiedEmailToBook(IsEmailVerified):
+    """IsEmailVerified, switched by settings.BOOKING_REQUIRES_VERIFIED_EMAIL."""
+
+    message = 'Confirm your email address before booking. We sent you a link — you can ask for a new one.'
+
+    def has_permission(self, request, view):
+        from django.conf import settings
+        if not getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True):
+            return True
+        return super().has_permission(request, view)
+
+
 class IsNotSuspended(BasePermission):
     """
     Deny suspended accounts on their very next request.

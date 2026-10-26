@@ -27,6 +27,8 @@ from rest_framework.response import Response
 from rest_framework.throttling import AnonRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from core import lockout
+
 from .serializers import (
     EmptySerializer,
     LoginSerializer,
@@ -109,9 +111,19 @@ class LoginView(GenericAPIView):
     throttle_classes = [AnonRateThrottle]
 
     def post(self, request):
+        # Per-account lockout (core/lockout.py): the anon throttle limits one
+        # IP; this stops a password being guessed from many.
+        email = str(request.data.get('email', ''))
+        if lockout.is_locked(email):
+            return Response({'detail': lockout.LOCKED_MESSAGE},
+                            status=status.HTTP_429_TOO_MANY_REQUESTS)
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            if 'email' not in serializer.errors and 'password' not in serializer.errors:
+                lockout.record_failure(email, request=request)  # wrong credentials, not a typo'd form
+            serializer.is_valid(raise_exception=True)
         user = serializer.validated_data['user']
+        lockout.clear(email)
 
         user.last_login = timezone.now()
         user.save(update_fields=['last_login'])

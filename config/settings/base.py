@@ -67,6 +67,12 @@ ROOT_URLCONF = 'config.urls'
 # Django admin path. Not secret, but off the default so it is not the first
 # thing every scanner tries. Set per environment.
 ADMIN_URL = config('ADMIN_URL', default='admin/')
+
+# A customer must confirm their email before booking (Task 18; launch
+# blocker from the 2026-10-13 review). Reaching someone about a session — or
+# a payment — needs an address that works. Staff-created customers confirm
+# by setting their password from the welcome email.
+BOOKING_REQUIRES_VERIFIED_EMAIL = config('BOOKING_REQUIRES_VERIFIED_EMAIL', default=True, cast=bool)
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 
