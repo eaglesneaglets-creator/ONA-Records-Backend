@@ -43,6 +43,12 @@ class Command(BaseCommand):
                  "(e.g. e2e- for Playwright users).",
         )
         parser.add_argument(
+            "--skip-with-payments",
+            action="store_true",
+            help="Leave out accounts that have payment records (the ledger is "
+                 "append-only) and sweep the rest, instead of refusing.",
+        )
+        parser.add_argument(
             "--dry-run",
             action="store_true",
             help="Show what would be deleted without deleting it.",
@@ -104,10 +110,20 @@ class Command(BaseCommand):
             from apps.studio.models import StudioBooking
             # Money records are evidence: a test account that ever paid is
             # not swept automatically. Invoices without payment are fine to go.
-            if Transaction.objects.filter(customer__email__in=found_emails).exists():
+            paid = set(Transaction.objects.filter(customer__email__in=found_emails)
+                       .values_list('customer__email', flat=True))
+            if paid and not options.get('skip_with_payments'):
                 raise CommandError(
                     'Refusing: some of these accounts have payment records. '
-                    'Remove them deliberately, not with a sweep.')
+                    'Remove them deliberately, not with a sweep '
+                    '(or pass --skip-with-payments to sweep the rest).')
+            if paid:
+                found_emails = [e for e in found_emails if e not in paid]
+                found = [u for u in found if u.email not in paid]
+                self.stdout.write(f"  kept {len(paid)} account(s) with payment records")
+            # Brokered jobs PROTECT their customer too; test jobs go with them.
+            from apps.marketplace.models import Job
+            Job.objects.filter(customer__email__in=found_emails).delete()
             Invoice.objects.filter(booking__customer__email__in=found_emails).delete()
             bookings, _ = StudioBooking.all_objects.filter(
                 customer__email__in=found_emails).delete()
