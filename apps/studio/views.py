@@ -38,6 +38,7 @@ from core.models import AuditLog
 from core.permissions.roles import IsCustomer, IsOwnerOrONAAdmin, VerifiedEmailToBook
 
 from .availability import MAX_RANGE_DAYS, availability
+from .money import with_paid
 from .models import (
     SLOT_HOLDING_STATUSES, BookingStatus, Engineer, Package, Room, Service, StudioBooking,
     constraint_name,
@@ -191,7 +192,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
     def get_queryset(self):
         from apps.payments.models import Receipt
 
-        qs = StudioBooking.objects.select_related(
+        qs = with_paid(StudioBooking.objects).select_related(
             'room', 'engineer', 'service', 'assigned_professional').annotate(
             has_receipt=Exists(Receipt.objects.filter(transaction__booking=OuterRef('pk'))))
         if getattr(self, 'swagger_fake_view', False):  # schema generation
@@ -211,10 +212,10 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
     @action(detail=False, methods=['get'])
     def summary(self, request):
         upcoming = list(
-            StudioBooking.objects.filter(
+            with_paid(StudioBooking.objects.filter(
                 customer=request.user, status__in=SLOT_HOLDING_STATUSES,
                 end_at__gt=timezone.now(),
-            ).select_related('room', 'engineer', 'service', 'assigned_professional').order_by('start_at')
+            )).select_related('room', 'engineer', 'service', 'assigned_professional').order_by('start_at')
         )
         data = {
             'upcoming_count': len(upcoming),
@@ -235,8 +236,11 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         before = booking.status
         booking.status = BookingStatus.CANCELLED
         booking.save(update_fields=['status', 'updated_at'])
+        from .money import net_paid
         AuditLog.record('booking.cancelled', actor=request.user, target=booking, request=request,
-                        reference=booking.reference, previous_status=before)
+                        reference=booking.reference, previous_status=before,
+                        # Held money is not refunded by a cancel; staff follow up (QA F1).
+                        paid_pesewas=net_paid(booking))
         notify_booking(booking, Kind.BOOKING_CANCELLED)
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data)
 

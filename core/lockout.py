@@ -27,8 +27,8 @@ from django.core.cache import cache
 LOCKOUT_ATTEMPTS = getattr(settings, 'LOCKOUT_ATTEMPTS', 5)
 LOCKOUT_WINDOW = getattr(settings, 'LOCKOUT_WINDOW_SECONDS', 15 * 60)
 
-LOCKED_MESSAGE = ('Too many failed sign-ins for this account. Wait 15 minutes and try again, '
-                  'or reset your password.')
+LOCKED_MESSAGE = ('Too many failed sign-ins for this account. Try again later (up to 15 '
+                  'minutes), or reset your password to sign in now.')
 
 
 def _key(email: str) -> str:

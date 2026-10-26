@@ -55,7 +55,7 @@ class ProfessionalPublicSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_display_name(self, obj) -> str:
-        return obj.stage_name or obj.name
+        return obj.public_name
 
 
 class JobSerializer(serializers.ModelSerializer):

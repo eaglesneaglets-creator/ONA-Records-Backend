@@ -60,12 +60,17 @@ def record_payment(booking, amount_pesewas: int, method: str, reference: str, no
             'That is more than is owed on this booking.' if owed > 0
             else 'This booking is already paid in full.')
 
+    ref = reference.strip()
+    if ref and Transaction.objects.filter(provider=Provider.MANUAL,
+                                          provider_ref__iexact=ref).exists():
+        # "MOMO-1" and "momo-1" are the same money (QA F7).
+        raise LedgerError('A payment with this reference has already been recorded.')
     try:
         with db.atomic():
             txn = Transaction.objects.create(
                 customer=booking.customer, booking=booking, provider=Provider.MANUAL,
                 method=method, amount_pesewas=amount_pesewas,
-                provider_ref=reference.strip() or None,
+                provider_ref=ref or None,
                 commission_percent=studio_commission_percent(),
             )
     except IntegrityError:

@@ -12,7 +12,7 @@ from django.utils import timezone
 from rest_framework import serializers, viewsets
 from rest_framework.permissions import IsAuthenticated
 
-from apps.payments.models import Transaction, TransactionStatus
+from apps.payments.models import EntryType, LedgerEntry, Transaction, TransactionStatus
 from apps.payments.money import format_ghs
 from core.permissions.roles import IsONAAdmin
 
@@ -55,6 +55,11 @@ class CustomerStaffViewSet(viewsets.ReadOnlyModelViewSet):
         paid = (Transaction.objects
                 .filter(customer=OuterRef('pk'), status=TransactionStatus.SUCCEEDED)
                 .order_by().values('customer').annotate(t=Sum('amount_pesewas')).values('t')[:1])
+        # Net of refunds, like the booking record and the KPIs (QA F5).
+        refunded = (LedgerEntry.objects
+                    .filter(transaction__customer=OuterRef('pk'), entry_type=EntryType.REFUND)
+                    .order_by().values('transaction__customer')
+                    .annotate(t=Sum('amount_pesewas')).values('t')[:1])
         return (User.objects.filter(role='customer')
                 .annotate(
                     booking_count=Count('studio_bookings', filter=live),
@@ -62,5 +67,6 @@ class CustomerStaffViewSet(viewsets.ReadOnlyModelViewSet):
                         studio_bookings__status__in=('pending', 'confirmed'),
                         studio_bookings__end_at__gt=timezone.now())),
                     last_session_at=Max('studio_bookings__start_at', filter=live),
-                    paid_pesewas=Coalesce(Subquery(paid, output_field=IntegerField()), Value(0)),
+                    paid_pesewas=Coalesce(Subquery(paid, output_field=IntegerField()), Value(0))
+                    - Coalesce(Subquery(refunded, output_field=IntegerField()), Value(0)),
                 ))

@@ -3,7 +3,10 @@
 Your booking {{ reference }} for {{ when }} has been cancelled, and the time
 has been released.
 
-If you did not ask for this, reply to this email and we will look into it.
+{% if held %}ONA is holding the {{ held }} you paid for this booking. We will contact you
+about it.
+
+{% endif %}If you did not ask for this, reply to this email and we will look into it.
 
 Book another session: {{ bookings_url }}
 

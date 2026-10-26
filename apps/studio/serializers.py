@@ -122,6 +122,18 @@ class BookingSerializer(serializers.ModelSerializer):
     # skills, never contact details (PRODUCT.md constraint 1).
     professional = serializers.SerializerMethodField()
     professional_fee_display = serializers.SerializerMethodField()
+    # Net of refunds, so the customer is told the truth before cancelling a
+    # booking they have paid for (QA F1).
+    paid_pesewas = serializers.SerializerMethodField()
+    paid_display = serializers.SerializerMethodField()
+
+    def get_paid_pesewas(self, obj) -> int:
+        from .money import net_paid
+        return net_paid(obj)
+
+    def get_paid_display(self, obj) -> str:
+        from apps.payments.money import format_ghs
+        return format_ghs(self.get_paid_pesewas(obj))
 
     def get_professional(self, obj) -> dict | None:
         from apps.marketplace.serializers import ProfessionalPublicSerializer
@@ -143,7 +155,8 @@ class BookingSerializer(serializers.ModelSerializer):
         fields = ('id', 'reference', 'status', 'room', 'engineer', 'service',
                   'start_at', 'end_at', 'duration_minutes', 'total_pesewas', 'total_display',
                   'notes', 'created_at', 'can_change', 'has_receipt',
-                  'professional', 'professional_fee_pesewas', 'professional_fee_display')
+                  'professional', 'professional_fee_pesewas', 'professional_fee_display',
+                  'paid_pesewas', 'paid_display')
         read_only_fields = fields
 
 
@@ -196,8 +209,20 @@ class BookingCreateSerializer(serializers.Serializer):
         from apps.payments.documents import issue_invoice
 
         validated.pop('hours')  # folded into end_at
-        booking = StudioBooking.objects.create(customer=self.context['request'].user,
-                                               **validated)
+        customer = self.context['request'].user
+        # The cap re-checked under a lock on the customer's row (QA F3):
+        # parallel requests all passed the unlocked check in validate().
+        # The view wraps save() in a transaction, so the lock holds until
+        # this booking commits or rolls back.
+        type(customer).objects.select_for_update().filter(pk=customer.pk).first()
+        open_pending = StudioBooking.objects.filter(
+            customer=customer, status=BookingStatus.PENDING, end_at__gt=timezone.now(),
+        ).count()
+        if open_pending >= MAX_OPEN_PENDING:
+            raise serializers.ValidationError(
+                f'You already have {open_pending} bookings waiting for confirmation. '
+                'ONA will confirm or release them before you can add more.')
+        booking = StudioBooking.objects.create(customer=customer, **validated)
         # Same transaction as the booking (the view wraps save() in atomic):
         # every booking has its invoice from the moment it exists.
         issue_invoice(booking)

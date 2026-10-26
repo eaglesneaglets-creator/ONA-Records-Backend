@@ -19,8 +19,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Exists, IntegerField, OuterRef, Subquery, Sum, Value
-from django.db.models.functions import Coalesce
+from django.db.models import Exists, OuterRef, Sum
 from django.utils import timezone
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -52,34 +51,19 @@ from .brokering import (
     assign_professional,
 )
 from .models import SLOT_HOLDING_STATUSES, BookingStatus, StudioBooking, constraint_name
+from .money import with_paid
 from .serializers import BookingSerializer
 from .views import SlotTaken
 
 TZ = ZoneInfo(settings.TIME_ZONE)
 
 
-def _sum(qs, field='amount_pesewas'):
-    """A correlated SUM as a subquery, so several money totals can sit on one
-    booking row without the join fan-out double-counting them."""
-    return Coalesce(
-        # order_by() drops the model's default ordering, which Postgres would
-        # otherwise demand in the GROUP BY.
-        Subquery(qs.order_by().values(_k=Value(1)).annotate(t=Sum(field)).values('t')[:1],
-                 output_field=IntegerField()),
-        Value(0),
-    )
-
-
 def staff_bookings():
-    paid = Transaction.objects.filter(booking=OuterRef('pk'), status=TransactionStatus.SUCCEEDED)
-    refunded = LedgerEntry.objects.filter(transaction__booking=OuterRef('pk'),
-                                          entry_type=EntryType.REFUND)
-    return (StudioBooking.objects
-            .select_related('customer', 'room', 'engineer', 'service', 'assigned_professional',
-                            'created_by')
-            .annotate(has_receipt=Exists(Receipt.objects.filter(transaction__booking=OuterRef('pk'))),
-                      paid_pesewas=_sum(paid),
-                      refunded_pesewas=_sum(refunded)))
+    return with_paid(
+        StudioBooking.objects
+        .select_related('customer', 'room', 'engineer', 'service', 'assigned_professional',
+                        'created_by')
+        .annotate(has_receipt=Exists(Receipt.objects.filter(transaction__booking=OuterRef('pk')))))
 
 
 def customer_brief(u) -> dict:

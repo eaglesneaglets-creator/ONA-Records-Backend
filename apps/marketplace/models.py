@@ -80,8 +80,16 @@ class Professional(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
             ),
         ]
 
+    # What customers see (PRODUCT.md constraint 1). The real name never leaves
+    # ONA; with no stage name, a neutral label stands in (QA F2).
+    PUBLIC_FALLBACK = 'ONA session professional'
+
     def __str__(self) -> str:
         return self.stage_name or self.name
+
+    @property
+    def public_name(self) -> str:
+        return self.stage_name.strip() or self.PUBLIC_FALLBACK
 
     @property
     def rate_display(self) -> str:

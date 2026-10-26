@@ -258,6 +258,9 @@ class PasswordResetConfirmView(GenericAPIView):
             user.email_verified_at = timezone.now()
             fields.append('email_verified_at')
         user.save(update_fields=fields)
+        # The lock message says "or reset your password" — so a reset must
+        # actually let them in (QA F4).
+        lockout.clear(user.email)
 
         # Changing the password invalidates the token that was just used,
         # because Django's generator hashes the password into it. That is why

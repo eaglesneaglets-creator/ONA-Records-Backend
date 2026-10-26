@@ -54,7 +54,7 @@ def _render(template: str, subject: str, ctx: dict) -> Email:
 def booking_context(booking) -> dict:
     pro = booking.assigned_professional
     return {
-        'professional': (pro.stage_name or pro.name) if pro else '',
+        'professional': pro.public_name if pro else '',
         'professional_fee': format_ghs(booking.professional_fee_pesewas),
         'name': _name(booking.customer),
         'reference': booking.reference,
@@ -85,8 +85,10 @@ def booking_rescheduled(booking) -> Email:
 
 
 def booking_cancelled(booking) -> Email:
-    return _render('booking_cancelled', f'Booking cancelled — {booking.reference}',
-                   booking_context(booking))
+    from apps.studio.money import net_paid
+    held = net_paid(booking)
+    ctx = {**booking_context(booking), 'held': format_ghs(held) if held > 0 else ''}
+    return _render('booking_cancelled', f'Booking cancelled — {booking.reference}', ctx)
 
 
 def booking_confirmed(booking) -> Email:

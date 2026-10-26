@@ -61,7 +61,7 @@ def _invoice_lines(booking) -> list[dict]:
         # The customer-facing name only (stage name if set) — never contact
         # details, which stay with ONA (PRODUCT.md constraint 1).
         lines.append({
-            'description': f'Session professional · {pro.stage_name or pro.name}',
+            'description': f'Session professional · {pro.public_name}',
             'quantity': 1, 'unit_pesewas': booking.professional_fee_pesewas,
             'total_pesewas': booking.professional_fee_pesewas,
         })
