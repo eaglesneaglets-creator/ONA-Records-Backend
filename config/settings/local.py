@@ -5,7 +5,7 @@ Run with: DJANGO_SETTINGS_MODULE=config.settings.local
 """
 
 from .base import *  # noqa: F401,F403
-from decouple import config
+from decouple import Csv, config
 import dj_database_url
 
 DEBUG = True
@@ -25,7 +25,10 @@ MIDDLEWARE = [  # noqa: F405
 
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='insecure-local-key-do-not-deploy')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]', 'testserver']
+# Overridable so the API can run in a container and be reached by its
+# service name (docker-compose.preview.yml calls it `api`).
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv(),
+                       default='localhost,127.0.0.1,[::1],testserver')
 
 # Postgres is required even locally. The no-double-booking rule uses an
 # EXCLUDE constraint with btree_gist, which SQLite cannot express — so a
