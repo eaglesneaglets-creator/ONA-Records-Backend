@@ -104,6 +104,19 @@ class BookingSerializer(serializers.ModelSerializer):
     duration_minutes = serializers.IntegerField(read_only=True)
     can_change = serializers.BooleanField(read_only=True)
     has_receipt = serializers.SerializerMethodField()
+    # Manual brokering (Task 15). The public view only: a display name and
+    # skills, never contact details (PRODUCT.md constraint 1).
+    professional = serializers.SerializerMethodField()
+    professional_fee_display = serializers.SerializerMethodField()
+
+    def get_professional(self, obj) -> dict | None:
+        from apps.marketplace.serializers import ProfessionalPublicSerializer
+        pro = obj.assigned_professional
+        return ProfessionalPublicSerializer(pro).data if pro else None
+
+    def get_professional_fee_display(self, obj) -> str:
+        from apps.payments.money import format_ghs
+        return format_ghs(obj.professional_fee_pesewas)
 
     def get_has_receipt(self, obj) -> bool:
         annotated = getattr(obj, 'has_receipt', None)  # list views annotate it
@@ -115,7 +128,8 @@ class BookingSerializer(serializers.ModelSerializer):
         model = StudioBooking
         fields = ('id', 'reference', 'status', 'room', 'engineer', 'service',
                   'start_at', 'end_at', 'duration_minutes', 'total_pesewas', 'total_display',
-                  'notes', 'created_at', 'can_change', 'has_receipt')
+                  'notes', 'created_at', 'can_change', 'has_receipt',
+                  'professional', 'professional_fee_pesewas', 'professional_fee_display')
         read_only_fields = fields
 
 

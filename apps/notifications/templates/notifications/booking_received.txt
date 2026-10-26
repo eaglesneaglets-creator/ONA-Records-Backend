@@ -5,7 +5,8 @@ We have your booking.
   Reference: {{ reference }}
   Session:   {{ when }}
   Room:      {{ room }}, with {{ engineer }}
-  For:       {{ service }}
+  For:       {{ service }}{% if professional %}
+  With:      {{ professional }} ({{ professional_fee }}){% endif %}
   Total:     {{ total }}
 {% if pending %}
 It is held for you while ONA confirms it. No payment has been taken yet.

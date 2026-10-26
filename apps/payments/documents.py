@@ -2,6 +2,7 @@
 Issuing invoices and receipts.
 
     issue_invoice(booking)      -> Invoice   (idempotent: one per booking)
+    revise_invoice(booking)     -> Invoice   (before any payment only)
     issue_receipt(transaction)  -> Receipt   (idempotent: one per transaction)
 
 Both freeze their figures at issue. Numbers come from DocumentCounter under a
@@ -38,22 +39,33 @@ def next_number(kind: str) -> str:
 
 def _invoice_lines(booking) -> list[dict]:
     hours = booking.duration_minutes // 60
-    unit = booking.total_pesewas // hours if hours else booking.total_pesewas
+    room_total = booking.room_total_pesewas
+    unit = room_total // hours if hours else room_total
     # The rate is derived from the frozen total, not read from the room: the
     # room's rate may have changed since the booking was priced.
-    if unit * hours != booking.total_pesewas:
+    if unit * hours != room_total:
         # Never fudge a line to make it add up — show one line at the total.
-        return [{
+        lines = [{
             'description': f'{booking.room.name} with engineer — {booking.service.name}',
-            'quantity': 1, 'unit_pesewas': booking.total_pesewas,
-            'total_pesewas': booking.total_pesewas,
+            'quantity': 1, 'unit_pesewas': room_total, 'total_pesewas': room_total,
         }]
-    return [{
-        # The unit price has its own column; repeating it here crowded the line.
-        'description': f'{booking.room.name} · {booking.service.name} · engineer included, '
-                       f'per hour',
-        'quantity': hours, 'unit_pesewas': unit, 'total_pesewas': booking.total_pesewas,
-    }]
+    else:
+        lines = [{
+            # The unit price has its own column; repeating it here crowded the line.
+            'description': f'{booking.room.name} · {booking.service.name} · engineer included, '
+                           f'per hour',
+            'quantity': hours, 'unit_pesewas': unit, 'total_pesewas': room_total,
+        }]
+    pro = booking.assigned_professional
+    if pro is not None and booking.professional_fee_pesewas:
+        # The customer-facing name only (stage name if set) — never contact
+        # details, which stay with ONA (PRODUCT.md constraint 1).
+        lines.append({
+            'description': f'Session professional · {pro.stage_name or pro.name}',
+            'quantity': 1, 'unit_pesewas': booking.professional_fee_pesewas,
+            'total_pesewas': booking.professional_fee_pesewas,
+        })
+    return lines
 
 
 @db.atomic
@@ -71,6 +83,38 @@ def issue_invoice(booking) -> Invoice:
         booking=booking, number=next_number('INV'), customer_name=name,
         customer_email=customer.email, lines=lines, total_pesewas=total,
     )
+
+
+def has_payment(booking) -> bool:
+    return Transaction.objects.filter(booking=booking,
+                                      status=TransactionStatus.SUCCEEDED).exists()
+
+
+@db.atomic
+def revise_invoice(booking) -> Invoice:
+    """
+    Re-price the booking's invoice after staff change what it includes.
+
+    Keeps the number (no gap, no second invoice for one booking) and bumps
+    the revision. Refused once a payment has succeeded: from then on the
+    invoice is what was paid against, and it never changes.
+    """
+    invoice = Invoice.objects.select_for_update().filter(booking=booking).first()
+    if invoice is None:
+        return issue_invoice(booking)
+    if has_payment(booking):
+        raise DocumentError('A payment has been made against this invoice; it can no longer change.')
+    lines = _invoice_lines(booking)
+    total = sum(line['total_pesewas'] for line in lines)
+    if total != booking.total_pesewas:
+        raise DocumentError('Invoice lines do not add up to the booking total.')
+    if lines == invoice.lines and total == invoice.total_pesewas:
+        return invoice
+    invoice.lines, invoice.total_pesewas = lines, total
+    invoice.revision += 1
+    invoice.revised_at = timezone.now()
+    invoice.save(update_fields=['lines', 'total_pesewas', 'revision', 'revised_at'])
+    return invoice
 
 
 @db.atomic

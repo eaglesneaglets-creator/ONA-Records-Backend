@@ -96,7 +96,11 @@ class StudioBookingAdmin(admin.ModelAdmin):
                      'customer__last_name')
     date_hierarchy = 'start_at'
     ordering = ('-start_at',)
-    readonly_fields = ('id', 'reference', 'total_pesewas', 'created_at', 'updated_at',
+    # Money and who-arranged-it are read-only here: re-pricing goes through
+    # the ONA console (apps/studio/brokering.py), which revises the invoice,
+    # refuses once paid, audits the change and emails the customer.
+    readonly_fields = ('id', 'reference', 'total_pesewas', 'assigned_professional',
+                       'professional_fee_pesewas', 'created_by', 'created_at', 'updated_at',
                        'deleted_at', 'deleted_by')
     raw_id_fields = ('customer',)
 

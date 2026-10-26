@@ -25,6 +25,8 @@ class Kind(models.TextChoices):
     BOOKING_CANCELLED = 'booking_cancelled', 'Booking cancelled'
     BOOKING_CONFIRMED = 'booking_confirmed', 'Booking confirmed by ONA'
     BOOKING_COMPLETED = 'booking_completed', 'Session completed'
+    BOOKING_UPDATED = 'booking_updated', 'Booking updated by ONA'
+    ACCOUNT_CREATED = 'account_created', 'Account created by ONA'
     PAYMENT_CONFIRMED = 'payment_confirmed', 'Payment confirmed'
     REMINDER = 'reminder', 'Session reminder'
     VERIFY_EMAIL = 'verify_email', 'Verify email address'

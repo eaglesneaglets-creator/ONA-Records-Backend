@@ -50,6 +50,10 @@ def send_booking_notification(booking_id: str, kind: str) -> str:
         key, build = f'{kind}:{booking.pk}', lambda: messages.booking_confirmed(booking)
     elif kind == Kind.BOOKING_COMPLETED:
         key, build = f'{kind}:{booking.pk}', lambda: messages.booking_completed(booking)
+    elif kind == Kind.BOOKING_UPDATED:
+        # One email per distinct change: the key carries the moment it changed.
+        key = f'{kind}:{booking.pk}:{booking.updated_at.isoformat()}'
+        build = lambda: messages.booking_updated(booking)  # noqa: E731
     elif kind == Kind.PAYMENT_CONFIRMED:
         from apps.payments.models import Receipt
         receipt = (Receipt.objects.filter(transaction__booking=booking)
@@ -134,8 +138,18 @@ def send_account_email(user_id: str, kind: str) -> str:
     elif kind == Kind.PASSWORD_RESET:
         token = default_token_generator.make_token(user)
         email = messages.password_reset(user, f'{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}')
+    elif kind == Kind.ACCOUNT_CREATED:
+        # Staff created this account (Task 15); the customer sets their own
+        # password through the reset flow. The same single-use token.
+        token = default_token_generator.make_token(user)
+        email = messages.account_created(
+            user, f'{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}&welcome=1')
     else:
         raise ValueError(f'Unknown account email kind: {kind!r}')
-    # No dedupe key: asking twice for a reset link is two legitimate emails.
-    log = claim(kind, user.email)
+    # No dedupe key for resets: asking twice is two legitimate emails. An
+    # account is only created once, so its welcome is sent once.
+    key = f'{kind}:{user.pk}' if kind == Kind.ACCOUNT_CREATED else None
+    log = claim(kind, user.email, dedupe_key=key)
+    if log is None:
+        return 'already-sent'
     return 'sent' if deliver(log, email) else 'failed'

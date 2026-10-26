@@ -181,7 +181,8 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
     def get_queryset(self):
         from apps.payments.models import Receipt
 
-        qs = StudioBooking.objects.select_related('room', 'engineer', 'service').annotate(
+        qs = StudioBooking.objects.select_related(
+            'room', 'engineer', 'service', 'assigned_professional').annotate(
             has_receipt=Exists(Receipt.objects.filter(transaction__booking=OuterRef('pk'))))
         if getattr(self, 'swagger_fake_view', False):  # schema generation
             return qs.none()
@@ -203,7 +204,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
             StudioBooking.objects.filter(
                 customer=request.user, status__in=SLOT_HOLDING_STATUSES,
                 end_at__gt=timezone.now(),
-            ).select_related('room', 'engineer', 'service').order_by('start_at')
+            ).select_related('room', 'engineer', 'service', 'assigned_professional').order_by('start_at')
         )
         data = {
             'upcoming_count': len(upcoming),

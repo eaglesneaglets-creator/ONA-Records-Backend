@@ -9,7 +9,9 @@ details (PRODUCT.md constraint 1).
 
 from rest_framework import serializers
 
-from .models import MAX_SKILLS, Professional, RateType
+from apps.accounts.models import User
+
+from .models import MAX_SKILLS, Job, Professional, RateType
 
 
 class ProfessionalAdminSerializer(serializers.ModelSerializer):
@@ -54,3 +56,45 @@ class ProfessionalPublicSerializer(serializers.ModelSerializer):
 
     def get_display_name(self, obj) -> str:
         return obj.stage_name or obj.name
+
+
+class JobSerializer(serializers.ModelSerializer):
+    """Staff view of a brokered job (Task 15). Write with ids; read with briefs."""
+
+    customer = serializers.PrimaryKeyRelatedField(queryset=User.objects.filter(role='customer'))
+    professional = serializers.PrimaryKeyRelatedField(
+        queryset=Professional.objects.active(), required=False, allow_null=True)
+    customer_brief = serializers.SerializerMethodField()
+    professional_brief = serializers.SerializerMethodField()
+    status_display = serializers.CharField(source='get_status_display', read_only=True)
+    fee_display = serializers.CharField(read_only=True)
+    created_by_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Job
+        fields = ('id', 'reference', 'customer', 'customer_brief', 'professional',
+                  'professional_brief', 'title', 'brief', 'status', 'status_display', 'due_on',
+                  'fee_pesewas', 'fee_display', 'notes', 'created_by_email', 'created_at',
+                  'updated_at')
+        read_only_fields = ('id', 'reference', 'created_at', 'updated_at')
+        extra_kwargs = {'fee_pesewas': {'min_value': 0, 'max_value': 100_000_000}}
+
+    def get_customer_brief(self, obj) -> dict:
+        c = obj.customer
+        return {'id': str(c.pk), 'name': c.full_name or c.email, 'email': c.email, 'phone': c.phone}
+
+    def get_professional_brief(self, obj) -> dict | None:
+        p = obj.professional
+        return {'id': str(p.pk), 'name': p.name, 'stage_name': p.stage_name} if p else None
+
+    def get_created_by_email(self, obj) -> str | None:
+        return obj.created_by.email if obj.created_by_id else None
+
+    def validate(self, attrs):
+        status = attrs.get('status', getattr(self.instance, 'status', 'requested'))
+        pro = attrs['professional'] if 'professional' in attrs else getattr(
+            self.instance, 'professional', None)
+        if status not in ('requested', 'cancelled') and pro is None:
+            raise serializers.ValidationError(
+                {'professional': 'Assign a professional before marking the job as arranged.'})
+        return attrs

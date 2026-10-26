@@ -11,7 +11,7 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from apps.accounts.staff import CustomerStaffViewSet
-from apps.marketplace.views import ProfessionalAdminViewSet
+from apps.marketplace.views import JobAdminViewSet, ProfessionalAdminViewSet
 from apps.payments.staff import TransactionStaffViewSet
 from apps.studio.staff import StaffBookingViewSet, StaffOverviewView
 
@@ -22,6 +22,7 @@ router.register('professionals', ProfessionalAdminViewSet, basename='professiona
 router.register('bookings', StaffBookingViewSet, basename='booking')
 router.register('customers', CustomerStaffViewSet, basename='customer')
 router.register('payments', TransactionStaffViewSet, basename='payment')
+router.register('jobs', JobAdminViewSet, basename='job')
 
 urlpatterns = [
     path('overview/', StaffOverviewView.as_view(), name='overview'),

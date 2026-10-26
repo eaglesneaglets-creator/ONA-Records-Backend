@@ -229,6 +229,13 @@ class Invoice(UUIDPrimaryKeyMixin):
     lines = models.JSONField(
         help_text='[{description, quantity, unit_pesewas, total_pesewas}] — integers only.')
     total_pesewas = models.PositiveIntegerField()
+    # Before any payment, staff may change what a booking includes (Task 15:
+    # assigning a professional adds a fee line). The invoice keeps its number
+    # and is revised in place — it is a request for payment, and nothing has
+    # been paid against it yet. Once a payment succeeds it is frozen for good
+    # (apps/payments/documents.py::revise_invoice refuses).
+    revision = models.PositiveSmallIntegerField(default=1)
+    revised_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ('-issued_at',)

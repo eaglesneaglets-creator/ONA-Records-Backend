@@ -129,7 +129,10 @@ def render_invoice(invoice) -> bytes:
     booking = invoice.booking
     buf = io.BytesIO()
     c = _canvas(buf, f'Invoice {invoice.number}')
-    y = _header(c, 'INVOICE', invoice.number, invoice.issued_at)
+    # A revised invoice says so, dated when it was revised (Task 15).
+    revised = invoice.revision > 1 and invoice.revised_at is not None
+    y = _header(c, 'REVISED INVOICE' if revised else 'INVOICE', invoice.number,
+                invoice.revised_at if revised else invoice.issued_at)
 
     _pair(c, LEFT, y, 'Billed to', invoice.customer_name)
     c.setFont('Helvetica', 9.5)

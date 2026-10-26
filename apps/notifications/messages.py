@@ -52,7 +52,10 @@ def _render(template: str, subject: str, ctx: dict) -> Email:
 
 
 def booking_context(booking) -> dict:
+    pro = booking.assigned_professional
     return {
+        'professional': (pro.stage_name or pro.name) if pro else '',
+        'professional_fee': format_ghs(booking.professional_fee_pesewas),
         'name': _name(booking.customer),
         'reference': booking.reference,
         'room': booking.room.name,
@@ -96,6 +99,18 @@ def booking_completed(booking) -> Email:
                    booking_context(booking))
 
 
+def booking_updated(booking) -> Email:
+    from apps.payments.documents import issue_invoice
+    from apps.payments.pdf import render_invoice
+
+    email = _render('booking_updated', f'Your booking has been updated — {booking.reference}',
+                    booking_context(booking))
+    invoice = issue_invoice(booking)  # the current (possibly revised) invoice
+    email.attachments.append((f'ONA-invoice-{invoice.number}.pdf', render_invoice(invoice),
+                              'application/pdf'))
+    return email
+
+
 def payment_confirmed(booking, receipt) -> Email:
     from apps.payments.pdf import render_receipt
 
@@ -115,6 +130,11 @@ def reminder(booking) -> Email:
 def verify_email(user, link: str) -> Email:
     return _render('verify_email', 'Confirm your email address',
                    {'name': _name(user), 'link': link})
+
+
+def account_created(user, link: str) -> Email:
+    return _render('account_created', 'ONA Records has set up your account',
+                   {'name': _name(user), 'link': link, 'email': user.email})
 
 
 def password_reset(user, link: str) -> Email:

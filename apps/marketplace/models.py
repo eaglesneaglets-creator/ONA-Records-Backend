@@ -92,3 +92,69 @@ class Professional(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
 
 # At most this many skills per record; kept next to the field it guards.
 MAX_SKILLS = 20
+
+
+# ---------------------------------------------------------------------------
+# Jobs — brokered work that is not a studio session (Task 15)
+# ---------------------------------------------------------------------------
+
+class JobStatus(models.TextChoices):
+    REQUESTED = 'requested', 'Requested'      # customer asked; ONA is finding someone
+    ARRANGED = 'arranged', 'Arranged'          # professional assigned, terms agreed
+    IN_PROGRESS = 'in_progress', 'In progress'
+    COMPLETED = 'completed', 'Completed'
+    CANCELLED = 'cancelled', 'Cancelled'
+
+
+class Job(UUIDPrimaryKeyMixin, TimestampMixin):
+    """
+    A piece of work ONA brokers by hand between a customer and a professional
+    — a voice-over, a mix, a video shoot — that is not a booked studio
+    session.
+
+    Deliberately lightweight: the v0.3 marketplace replaces this with
+    requests, proposals and projects. Until then staff need one place to
+    record who asked for what, who is doing it, for how much, and where it
+    stands. Payment for a job is recorded with manual payments (Task 16);
+    this record carries the agreed fee, never a ledger movement.
+    """
+
+    reference = models.CharField(max_length=12, unique=True, editable=False)
+    customer = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT,
+                                 related_name='jobs')
+    professional = models.ForeignKey(Professional, null=True, blank=True,
+                                     on_delete=models.PROTECT, related_name='jobs')
+    title = models.CharField(max_length=150)
+    brief = models.TextField(blank=True, help_text='What the customer asked for.')
+    status = models.CharField(max_length=12, choices=JobStatus.choices,
+                              default=JobStatus.REQUESTED, db_index=True)
+    due_on = models.DateField(null=True, blank=True)
+    fee_pesewas = models.PositiveIntegerField(
+        null=True, blank=True, help_text='Agreed price to the customer, integer pesewas.')
+    notes = models.TextField(blank=True, help_text='Internal. Never shown to customers.')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ('-created_at',)
+        constraints = [
+            # "Arranged" and beyond means someone is doing it.
+            models.CheckConstraint(
+                condition=models.Q(status__in=['requested', 'cancelled'])
+                | models.Q(professional__isnull=False),
+                name='marketplace_job_professional_once_arranged',
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f'{self.reference} · {self.title}'
+
+    def save(self, *args, **kwargs):
+        if not self.reference:
+            import secrets
+            self.reference = 'JOB-' + secrets.token_hex(3).upper()
+        super().save(*args, **kwargs)
+
+    @property
+    def fee_display(self) -> str:
+        return format_ghs(self.fee_pesewas) if self.fee_pesewas is not None else 'To be agreed'

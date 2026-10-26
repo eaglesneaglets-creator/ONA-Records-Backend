@@ -6,7 +6,8 @@ Good news: ONA has confirmed your session.
   When:       {{ when }}
   Where:      {{ room }}
   Engineer:   {{ engineer }}
-  Session:    {{ service }}
+  Session:    {{ service }}{% if professional %}
+  With:       {{ professional }} ({{ professional_fee }}){% endif %}
   Total:      {{ total }}
 
 If something changes on your side, you can move or cancel it from your

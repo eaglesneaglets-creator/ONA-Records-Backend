@@ -239,7 +239,13 @@ class PasswordResetConfirmView(GenericAPIView):
         data = serializer.validated_data
         user = data['user']
         user.set_password(data['password'])
-        user.save(update_fields=['password'])
+        fields = ['password']
+        # The link arrived by email, so using it proves the address — this
+        # is how a customer ONA set up at the desk confirms theirs (Task 15).
+        if not user.is_email_verified:
+            user.email_verified_at = timezone.now()
+            fields.append('email_verified_at')
+        user.save(update_fields=fields)
 
         # Changing the password invalidates the token that was just used,
         # because Django's generator hashes the password into it. That is why

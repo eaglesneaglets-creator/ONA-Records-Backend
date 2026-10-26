@@ -249,9 +249,32 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     total_pesewas = models.PositiveIntegerField(help_text='Frozen at creation. Integer pesewas.')
     notes = models.TextField(blank=True, help_text='From the customer, for the engineer.')
 
+    # Manual brokering (Task 15). A professional ONA assigns to the session —
+    # a session musician, producer, vocal coach — and what they cost. The fee
+    # is part of total_pesewas, so the customer sees one honest total; the
+    # room's share is total minus fee. Changeable until a payment succeeds,
+    # frozen after (apps/studio/staff.py).
+    assigned_professional = models.ForeignKey(
+        'marketplace.Professional', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='bookings')
+    professional_fee_pesewas = models.PositiveIntegerField(
+        default=0, help_text='Integer pesewas, included in total_pesewas.')
+    created_by = models.ForeignKey(
+        'accounts.User', null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
+        help_text="Staff member who booked on the customer's behalf. Empty = self-service.")
+
     class Meta:
         ordering = ('-start_at',)
         constraints = [
+            models.CheckConstraint(
+                condition=models.Q(assigned_professional__isnull=False)
+                | models.Q(professional_fee_pesewas=0),
+                name='studio_booking_fee_needs_professional',
+            ),
+            models.CheckConstraint(
+                condition=models.Q(total_pesewas__gte=models.F('professional_fee_pesewas')),
+                name='studio_booking_fee_within_total',
+            ),
             models.CheckConstraint(
                 condition=models.Q(end_at__gt=models.F('start_at')),
                 name='studio_booking_ends_after_start',
@@ -302,6 +325,11 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     @property
     def total_display(self) -> str:
         return format_ghs(self.total_pesewas)
+
+    @property
+    def room_total_pesewas(self) -> int:
+        """The room-and-engineer share of the total; the rest is the fee."""
+        return self.total_pesewas - self.professional_fee_pesewas
 
     def save(self, *args, **kwargs):
         # A 6-hex reference has 16.7M values; a collision is rare but the

@@ -18,7 +18,7 @@ from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Exists, IntegerField, OuterRef, Subquery, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -37,8 +37,15 @@ from apps.payments.staff import TransactionStaffSerializer, transactions_with_le
 from core.models import AuditLog
 from core.permissions.roles import IsONAAdmin
 
-from .models import SLOT_HOLDING_STATUSES, BookingStatus, StudioBooking
+from .brokering import (
+    AssignmentRefused,
+    AssignProfessionalSerializer,
+    StaffBookingCreateSerializer,
+    assign_professional,
+)
+from .models import SLOT_HOLDING_STATUSES, BookingStatus, StudioBooking, constraint_name
 from .serializers import BookingSerializer
+from .views import SlotTaken
 
 TZ = ZoneInfo(settings.TIME_ZONE)
 
@@ -60,7 +67,8 @@ def staff_bookings():
     refunded = LedgerEntry.objects.filter(transaction__booking=OuterRef('pk'),
                                           entry_type=EntryType.REFUND)
     return (StudioBooking.objects
-            .select_related('customer', 'room', 'engineer', 'service')
+            .select_related('customer', 'room', 'engineer', 'service', 'assigned_professional',
+                            'created_by')
             .annotate(has_receipt=Exists(Receipt.objects.filter(transaction__booking=OuterRef('pk'))),
                       paid_pesewas=_sum(paid),
                       refunded_pesewas=_sum(refunded)))
@@ -78,12 +86,26 @@ class StaffBookingSerializer(BookingSerializer):
     paid_display = serializers.SerializerMethodField()
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     allowed_actions = serializers.SerializerMethodField()
+    assigned_professional = serializers.SerializerMethodField()
+    created_by_email = serializers.SerializerMethodField()
+    room_total_display = serializers.SerializerMethodField()
 
     class Meta(BookingSerializer.Meta):
         fields = BookingSerializer.Meta.fields + (
             'customer', 'paid_pesewas', 'refunded_pesewas', 'paid_display', 'status_display',
-            'allowed_actions', 'updated_at')
+            'allowed_actions', 'updated_at', 'assigned_professional', 'created_by_email',
+            'room_total_display')
         read_only_fields = fields
+
+    def get_assigned_professional(self, obj) -> dict | None:
+        p = obj.assigned_professional
+        return {'id': str(p.pk), 'name': p.name, 'stage_name': p.stage_name} if p else None
+
+    def get_created_by_email(self, obj) -> str | None:
+        return obj.created_by.email if obj.created_by_id else None
+
+    def get_room_total_display(self, obj) -> str:
+        return format_ghs(obj.room_total_pesewas)
 
     def get_customer(self, obj) -> dict:
         return customer_brief(obj.customer)
@@ -155,8 +177,10 @@ class TransitionSerializer(serializers.Serializer):
 class StaffBookingViewSet(viewsets.ReadOnlyModelViewSet):
     """
     GET  /admin/bookings/?when=upcoming|past|today&status=&customer=&search=
+    POST /admin/bookings/                    book for a customer (Task 15)
     GET  /admin/bookings/{id}/               with payments and history
     POST /admin/bookings/{id}/confirm|complete|cancel/   {reason?}
+    POST /admin/bookings/{id}/assign/        {professional, professional_fee_pesewas}
     """
 
     permission_classes = [IsAuthenticated, IsONAAdmin]
@@ -207,6 +231,39 @@ class StaffBookingViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response(StaffBookingDetailSerializer(
             staff_bookings().get(pk=booking.pk), context=self.get_serializer_context()).data)
+
+    def create(self, request):
+        ser = StaffBookingCreateSerializer(data=request.data, context={'request': request})
+        ser.is_valid(raise_exception=True)
+        try:
+            with transaction.atomic():
+                booking = ser.save()
+        except IntegrityError as exc:
+            # Validation passed a moment ago; the exclusion constraint refused
+            # it. Staff get the same honest answer as customers.
+            name = constraint_name(exc)
+            if not name.endswith(('_room_overlap', '_engineer_overlap')):
+                raise
+            which = 'engineer' if name.endswith('_engineer_overlap') else 'room'
+            raise SlotTaken(f'That {which} was booked by someone else just now. '
+                            'Please pick another time.')
+        return Response(StaffBookingDetailSerializer(
+            staff_bookings().get(pk=booking.pk), context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def assign(self, request, pk=None):
+        self.get_object()
+        body = AssignProfessionalSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            assign_professional(pk, body.validated_data['professional'],
+                                body.validated_data.get('professional_fee_pesewas', 0),
+                                actor=request.user, request=request)
+        except AssignmentRefused as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(StaffBookingDetailSerializer(
+            staff_bookings().get(pk=pk), context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
