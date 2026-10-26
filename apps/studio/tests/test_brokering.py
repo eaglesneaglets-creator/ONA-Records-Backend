@@ -323,6 +323,8 @@ class TestJobs:
         Job.objects.create(customer=w['ama'], title='Album cover', status='cancelled')
         assert staff.get(u('job-list'), {'search': 'jingle'}).data['count'] == 1
         assert staff.get(u('job-list'), {'status': 'cancelled'}).data['count'] == 1
+        assert [j['title'] for j in staff.get(u('job-list'), {'open': '1'}).data['results']] == [
+            'Radio jingle']
 
 
 class TestSetPassword:

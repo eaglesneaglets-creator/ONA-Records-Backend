@@ -61,7 +61,11 @@ class JobAdminViewSet(viewsets.ModelViewSet):
     filterset_fields = ('status', 'customer', 'professional')
 
     def get_queryset(self):
-        return Job.objects.select_related('customer', 'professional', 'created_by')
+        qs = Job.objects.select_related('customer', 'professional', 'created_by')
+        # ?open=1 — everything still in play, the console's default view.
+        if self.action == 'list' and self.request.query_params.get('open') == '1':
+            qs = qs.exclude(status__in=('completed', 'cancelled'))
+        return qs
 
     def perform_create(self, serializer):
         job = serializer.save(created_by=self.request.user)
