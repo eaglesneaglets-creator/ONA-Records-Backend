@@ -31,7 +31,15 @@ from rest_framework.views import APIView
 from apps.accounts.models import User
 from apps.notifications.dispatch import notify_booking
 from apps.notifications.models import Kind
-from apps.payments.models import Commission, EntryType, LedgerEntry, Receipt, Transaction, TransactionStatus
+from apps.payments.models import (
+    Commission,
+    EntryType,
+    LedgerEntry,
+    PaymentMethod,
+    Receipt,
+    Transaction,
+    TransactionStatus,
+)
 from apps.payments.money import format_ghs
 from apps.payments.staff import TransactionStaffSerializer, transactions_with_ledger
 from core.models import AuditLog
@@ -89,12 +97,14 @@ class StaffBookingSerializer(BookingSerializer):
     assigned_professional = serializers.SerializerMethodField()
     created_by_email = serializers.SerializerMethodField()
     room_total_display = serializers.SerializerMethodField()
+    outstanding_pesewas = serializers.SerializerMethodField()
+    outstanding_display = serializers.SerializerMethodField()
 
     class Meta(BookingSerializer.Meta):
         fields = BookingSerializer.Meta.fields + (
             'customer', 'paid_pesewas', 'refunded_pesewas', 'paid_display', 'status_display',
             'allowed_actions', 'updated_at', 'assigned_professional', 'created_by_email',
-            'room_total_display')
+            'room_total_display', 'outstanding_pesewas', 'outstanding_display')
         read_only_fields = fields
 
     def get_assigned_professional(self, obj) -> dict | None:
@@ -106,6 +116,15 @@ class StaffBookingSerializer(BookingSerializer):
 
     def get_room_total_display(self, obj) -> str:
         return format_ghs(obj.room_total_pesewas)
+
+    # Still owed, from the annotated totals — what the "Record payment" form
+    # offers, so the browser never subtracts money (Task 16).
+    def get_outstanding_pesewas(self, obj) -> int:
+        return max(obj.total_pesewas - getattr(obj, 'paid_pesewas', 0)
+                   + getattr(obj, 'refunded_pesewas', 0), 0)
+
+    def get_outstanding_display(self, obj) -> str:
+        return format_ghs(self.get_outstanding_pesewas(obj))
 
     def get_customer(self, obj) -> dict:
         return customer_brief(obj.customer)
@@ -168,6 +187,13 @@ TRANSITIONS = {
         lambda b, now: b.status in SLOT_HOLDING_STATUSES,
         'Only a pending or confirmed booking can be cancelled.'),
 }
+
+
+class ManualPaymentSerializer(serializers.Serializer):
+    amount_pesewas = serializers.IntegerField(min_value=1, max_value=100_000_000)
+    method = serializers.ChoiceField(choices=PaymentMethod.choices)
+    reference = serializers.CharField(max_length=100, required=False, allow_blank=True)
+    note = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
 class TransitionSerializer(serializers.Serializer):
@@ -264,6 +290,29 @@ class StaffBookingViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(StaffBookingDetailSerializer(
             staff_bookings().get(pk=pk), context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=['post'], url_path='payments')
+    def record_payment(self, request, pk=None):
+        """POST /admin/bookings/{id}/payments/ {amount_pesewas, method, reference?, note?}
+        — money ONA received off-platform (Task 16)."""
+        from apps.payments.manual import LedgerError, record_payment
+
+        booking = self.get_object()
+        body = ManualPaymentSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        try:
+            txn = record_payment(booking, d['amount_pesewas'], d['method'],
+                                 d.get('reference', ''), d.get('note', ''), actor=request.user)
+        except LedgerError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        AuditLog.record(AuditLog.Action.PAYMENT_HELD, actor=request.user, target=txn,
+                        request=request, booking=booking.reference, manual=True,
+                        amount_pesewas=txn.amount_pesewas, method=txn.method,
+                        reference=txn.provider_ref or '')
+        return Response(StaffBookingDetailSerializer(
+            staff_bookings().get(pk=booking.pk), context=self.get_serializer_context()).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):

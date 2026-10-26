@@ -41,6 +41,16 @@ class Provider(models.TextChoices):
     MANUAL = 'manual', 'Recorded by ONA staff'
 
 
+class PaymentMethod(models.TextChoices):
+    """How money recorded by staff arrived (Task 16). Empty for Hubtel, whose
+    own record says which channel the customer used."""
+    CASH = 'cash', 'Cash'
+    MOBILE_MONEY = 'mobile_money', 'Mobile Money'
+    BANK_TRANSFER = 'bank_transfer', 'Bank transfer'
+    CARD_TERMINAL = 'card_terminal', 'Card machine'
+    OTHER = 'other', 'Other'
+
+
 class TransactionStatus(models.TextChoices):
     PENDING = 'pending', 'Pending'          # charge started, provider has not answered
     SUCCEEDED = 'succeeded', 'Succeeded'    # provider confirmed; money is with ONA
@@ -56,6 +66,8 @@ class Transaction(UUIDPrimaryKeyMixin, TimestampMixin):
                                 related_name='transactions')
 
     provider = models.CharField(max_length=16, choices=Provider.choices)
+    method = models.CharField(max_length=16, choices=PaymentMethod.choices, blank=True,
+                              help_text='Manual payments only: how the money arrived.')
     provider_ref = models.CharField(
         max_length=100, null=True, blank=True,
         help_text="The provider's id for this charge. Unique per provider — it is the "

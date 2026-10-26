@@ -45,6 +45,7 @@ LOCAL_APPS = [
     'apps.payments',       # escrow ledger, Hubtel, commission
     'apps.reviews',        # two-way ratings
     'apps.notifications',  # pluggable channels
+    'apps.content',        # staff-edited site content (FAQ)
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS

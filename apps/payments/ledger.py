@@ -80,7 +80,7 @@ def open_transaction(booking, provider: str = Provider.HUBTEL) -> Transaction:
 
 @db.atomic
 def mark_succeeded(txn: Transaction, provider_ref: str | None = None,
-                   actor=None) -> LedgerEntry:
+                   actor=None, note: str = '') -> LedgerEntry:
     """
     The provider confirmed the money. Hold it — exactly once.
 
@@ -101,7 +101,7 @@ def mark_succeeded(txn: Transaction, provider_ref: str | None = None,
     txn.save(update_fields=['status', 'provider_ref', 'updated_at'])
     hold = LedgerEntry.objects.create(
         transaction=txn, entry_type=EntryType.HOLD, amount_pesewas=txn.amount_pesewas,
-        beneficiary=Beneficiary.ONA, created_by=actor,
+        beneficiary=Beneficiary.ONA, created_by=actor, note=note[:255],
     )
     # Same database transaction as the hold: a receipt exists exactly when
     # the money does.

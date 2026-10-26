@@ -122,6 +122,12 @@ def payment_confirmed(booking, receipt) -> Email:
     return email
 
 
+def payment_refunded(booking, entry) -> Email:
+    ctx = {**booking_context(booking), 'amount': format_ghs(entry.amount_pesewas),
+           'note': entry.note}
+    return _render('payment_refunded', f'Refund recorded — {booking.reference}', ctx)
+
+
 def reminder(booking) -> Email:
     return _render('reminder', f'Tomorrow at ONA — {booking.reference}',
                    booking_context(booking))

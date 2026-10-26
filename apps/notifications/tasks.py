@@ -54,6 +54,14 @@ def send_booking_notification(booking_id: str, kind: str) -> str:
         # One email per distinct change: the key carries the moment it changed.
         key = f'{kind}:{booking.pk}:{booking.updated_at.isoformat()}'
         build = lambda: messages.booking_updated(booking)  # noqa: E731
+    elif kind == Kind.PAYMENT_REFUNDED:
+        from apps.payments.models import LedgerEntry
+        entry = (LedgerEntry.objects.filter(transaction__booking=booking, entry_type='refund')
+                 .order_by('-created_at').first())
+        if entry is None:
+            return 'no-refund'
+        key = f'{kind}:{entry.pk}'
+        build = lambda: messages.payment_refunded(booking, entry)  # noqa: E731
     elif kind == Kind.PAYMENT_CONFIRMED:
         from apps.payments.models import Receipt
         receipt = (Receipt.objects.filter(transaction__booking=booking)

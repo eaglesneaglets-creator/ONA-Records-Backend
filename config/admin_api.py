@@ -11,8 +11,15 @@ from django.urls import path
 from rest_framework.routers import DefaultRouter
 
 from apps.accounts.staff import CustomerStaffViewSet
+from apps.content.views import FaqAdminViewSet
 from apps.marketplace.views import JobAdminViewSet, ProfessionalAdminViewSet
 from apps.payments.staff import TransactionStaffViewSet
+from apps.studio.catalogue_admin import (
+    EngineerAdminViewSet,
+    PackageAdminViewSet,
+    RoomAdminViewSet,
+    ServiceAdminViewSet,
+)
 from apps.studio.staff import StaffBookingViewSet, StaffOverviewView
 
 app_name = 'adminapi'
@@ -23,6 +30,12 @@ router.register('bookings', StaffBookingViewSet, basename='booking')
 router.register('customers', CustomerStaffViewSet, basename='customer')
 router.register('payments', TransactionStaffViewSet, basename='payment')
 router.register('jobs', JobAdminViewSet, basename='job')
+# Task 16 — content and catalogue.
+router.register('rooms', RoomAdminViewSet, basename='room')
+router.register('engineers', EngineerAdminViewSet, basename='engineer')
+router.register('services', ServiceAdminViewSet, basename='service')
+router.register('packages', PackageAdminViewSet, basename='package')
+router.register('faqs', FaqAdminViewSet, basename='faq')
 
 urlpatterns = [
     path('overview/', StaffOverviewView.as_view(), name='overview'),

@@ -39,12 +39,13 @@ from core.permissions.roles import IsCustomer, IsOwnerOrONAAdmin
 
 from .availability import MAX_RANGE_DAYS, availability
 from .models import (
-    SLOT_HOLDING_STATUSES, BookingStatus, Engineer, Room, Service, StudioBooking,
+    SLOT_HOLDING_STATUSES, BookingStatus, Engineer, Package, Room, Service, StudioBooking,
     constraint_name,
 )
 from .serializers import (
     BookingCreateSerializer, BookingRescheduleSerializer, BookingSerializer,
-    BookingSummarySerializer, EngineerSerializer, RoomSerializer, ServiceSerializer,
+    BookingSummarySerializer, EngineerSerializer, PackageSerializer, RoomSerializer,
+    ServiceSerializer,
     SlotSerializer,
 )
 
@@ -69,6 +70,15 @@ class EngineerViewSet(CatalogueViewSet):
     model = Engineer
     serializer_class = EngineerSerializer
     search_fields = ('name', 'bio')
+
+
+class PackageViewSet(CatalogueViewSet):
+    """GET /studio/packages/ — advertised bundles (Task 16)."""
+    model = Package
+    serializer_class = PackageSerializer
+
+    def get_queryset(self):
+        return super().get_queryset().select_related('room')
 
 
 class ServiceViewSet(CatalogueViewSet):

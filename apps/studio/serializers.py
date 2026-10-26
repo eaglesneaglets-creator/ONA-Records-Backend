@@ -16,7 +16,7 @@ from django.utils import timezone
 from rest_framework import serializers
 
 from .availability import CLOSE_HOUR, OPEN_HOUR, STUDIO_TZ, is_free
-from .models import BookingStatus, Engineer, Room, Service, StudioBooking
+from .models import BookingStatus, Engineer, Package, Room, Service, StudioBooking
 
 
 class RoomSerializer(serializers.ModelSerializer):
@@ -34,6 +34,20 @@ class EngineerSerializer(serializers.ModelSerializer):
         model = Engineer
         fields = ('id', 'name', 'bio', 'specialties')
         read_only_fields = fields
+
+
+class PackageSerializer(serializers.ModelSerializer):
+    price_display = serializers.CharField(read_only=True)
+    room_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Package
+        fields = ('id', 'name', 'description', 'hours', 'price_pesewas', 'price_display',
+                  'room', 'room_name', 'includes')
+        read_only_fields = fields
+
+    def get_room_name(self, obj) -> str | None:
+        return obj.room.name if obj.room_id else None
 
 
 class ServiceSerializer(serializers.ModelSerializer):

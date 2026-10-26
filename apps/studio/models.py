@@ -140,6 +140,29 @@ class Service(CatalogueItem):
         return format_ghs(self.base_price_pesewas)
 
 
+class Package(CatalogueItem):
+    """
+    A priced bundle staff advertise — "Single, recorded and mixed", "Half-day
+    block" (Task 16). Content, not a booking type: in v0.1 a customer books
+    the hours online or asks ONA, and staff book the package for them. The
+    price is shown as advertised; a booking's own total is still frozen at
+    the moment it is made.
+    """
+
+    hours = models.PositiveSmallIntegerField(
+        validators=[MinValueValidator(1)], help_text='Studio hours included.')
+    price_pesewas = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)], help_text='Integer pesewas for the whole package.')
+    room = models.ForeignKey(Room, null=True, blank=True, on_delete=models.PROTECT,
+                             related_name='packages', help_text='Empty = any room.')
+    includes = models.JSONField(default=list, blank=True,
+                                help_text='Short lines, e.g. ["Engineer", "Two revisions"].')
+
+    @property
+    def price_display(self) -> str:
+        return format_ghs(self.price_pesewas)
+
+
 # ---------------------------------------------------------------------------
 # Calendar
 # ---------------------------------------------------------------------------
