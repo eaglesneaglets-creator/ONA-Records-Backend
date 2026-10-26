@@ -7,13 +7,23 @@ file registers. Keep staff endpoints here rather than scattered through app
 urls, so "what can staff do over the API?" has one answer.
 """
 
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 
+from apps.accounts.staff import CustomerStaffViewSet
 from apps.marketplace.views import ProfessionalAdminViewSet
+from apps.payments.staff import TransactionStaffViewSet
+from apps.studio.staff import StaffBookingViewSet, StaffOverviewView
 
 app_name = 'adminapi'
 
 router = DefaultRouter()
 router.register('professionals', ProfessionalAdminViewSet, basename='professional')
+router.register('bookings', StaffBookingViewSet, basename='booking')
+router.register('customers', CustomerStaffViewSet, basename='customer')
+router.register('payments', TransactionStaffViewSet, basename='payment')
 
-urlpatterns = router.urls
+urlpatterns = [
+    path('overview/', StaffOverviewView.as_view(), name='overview'),
+    *router.urls,
+]

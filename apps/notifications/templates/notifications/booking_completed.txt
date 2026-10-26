@@ -1,0 +1,11 @@
+{% autoescape off %}Hello {{ name }},
+
+Thank you for recording with us. Your session {{ reference }} on
+{{ when }} is now marked as complete.
+
+Your invoice and any receipts stay available on your bookings page:
+{{ bookings_url }}
+
+Whenever you are ready for the next one, we will be here.
+
+ONA Records{% endautoescape %}

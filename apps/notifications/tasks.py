@@ -46,6 +46,10 @@ def send_booking_notification(booking_id: str, kind: str) -> str:
         build = lambda: messages.booking_rescheduled(booking)  # noqa: E731
     elif kind == Kind.BOOKING_CANCELLED:
         key, build = f'{kind}:{booking.pk}', lambda: messages.booking_cancelled(booking)
+    elif kind == Kind.BOOKING_CONFIRMED:
+        key, build = f'{kind}:{booking.pk}', lambda: messages.booking_confirmed(booking)
+    elif kind == Kind.BOOKING_COMPLETED:
+        key, build = f'{kind}:{booking.pk}', lambda: messages.booking_completed(booking)
     elif kind == Kind.PAYMENT_CONFIRMED:
         from apps.payments.models import Receipt
         receipt = (Receipt.objects.filter(transaction__booking=booking)

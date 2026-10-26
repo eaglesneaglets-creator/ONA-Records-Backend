@@ -86,6 +86,16 @@ def booking_cancelled(booking) -> Email:
                    booking_context(booking))
 
 
+def booking_confirmed(booking) -> Email:
+    return _render('booking_confirmed', f'Session confirmed — {booking.reference}',
+                   booking_context(booking))
+
+
+def booking_completed(booking) -> Email:
+    return _render('booking_completed', f'Thanks for the session — {booking.reference}',
+                   booking_context(booking))
+
+
 def payment_confirmed(booking, receipt) -> Email:
     from apps.payments.pdf import render_receipt
 

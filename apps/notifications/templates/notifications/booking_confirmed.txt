@@ -1,0 +1,16 @@
+{% autoescape off %}Hello {{ name }},
+
+Good news: ONA has confirmed your session.
+
+  Reference:  {{ reference }}
+  When:       {{ when }}
+  Where:      {{ room }}
+  Engineer:   {{ engineer }}
+  Session:    {{ service }}
+  Total:      {{ total }}
+
+If something changes on your side, you can move or cancel it from your
+bookings page before it starts: {{ bookings_url }}
+
+See you at the studio,
+ONA Records{% endautoescape %}
