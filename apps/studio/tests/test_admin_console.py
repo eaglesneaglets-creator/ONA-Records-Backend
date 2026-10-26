@@ -218,6 +218,7 @@ class TestMoney:
         assert t['provider'] == 'hubtel' and t['status'] == 'succeeded'
         assert t['commission_percent'] == 10
         assert t['commission_pesewas'] == 4000 and t['held_pesewas'] == 0
+        assert t['held_display'] == 'GHS 0.00'
         assert [e['entry_type'] for e in t['ledger']] == ['hold', 'release']
         assert t['ledger'][1]['commission'] == {'percent': 10, 'amount_pesewas': 4000,
                                                'amount_display': 'GHS 40.00'}

@@ -59,13 +59,15 @@ class TransactionStaffSerializer(serializers.ModelSerializer):
     amount_display = serializers.CharField()
     ledger = LedgerEntrySerializer(source='ledger_entries', many=True)
     held_pesewas = serializers.SerializerMethodField()
+    held_display = serializers.SerializerMethodField()
     commission_pesewas = serializers.SerializerMethodField()
 
     class Meta:
         model = Transaction
         fields = ('id', 'booking', 'customer', 'provider', 'provider_display', 'provider_ref',
                   'amount_pesewas', 'amount_display', 'status', 'status_display',
-                  'failure_reason', 'commission_percent', 'held_pesewas', 'commission_pesewas',
+                  'failure_reason', 'commission_percent', 'held_pesewas', 'held_display',
+                  'commission_pesewas',
                   'created_at', 'ledger')
         read_only_fields = fields
 
@@ -80,6 +82,9 @@ class TransactionStaffSerializer(serializers.ModelSerializer):
     def get_held_pesewas(self, obj) -> int:
         sign = {EntryType.HOLD: 1, EntryType.RELEASE: -1, EntryType.REFUND: -1}
         return sum(sign[e.entry_type] * e.amount_pesewas for e in obj.ledger_entries.all())
+
+    def get_held_display(self, obj) -> str:
+        return format_ghs(self.get_held_pesewas(obj))
 
     def get_commission_pesewas(self, obj) -> int:
         return sum(e.commission.amount_pesewas for e in obj.ledger_entries.all()
