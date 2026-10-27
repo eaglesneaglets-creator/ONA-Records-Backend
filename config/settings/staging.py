@@ -72,28 +72,16 @@ STAGING_NOINDEX = True
 MIDDLEWARE = ['core.middleware.staging.NoIndexMiddleware', *MIDDLEWARE]  # noqa: F405
 
 # ---------------------------------------------------------------------------
-# 5. Payments — Hubtel, test credentials only
+# 5. Payments — Paystack, test key only
 # ---------------------------------------------------------------------------
-# Hubtel does not prefix its credentials the way some providers do, so there
-# is no reliable way to detect a live key by inspecting it. The guard is
-# therefore an explicit declaration: staging must state that it knows it is
-# using test credentials. Set HUBTEL_TEST_MODE=True in the staging
-# environment. Forgetting to set it stops the deploy rather than silently
-# charging real phones.
-HUBTEL_TEST_MODE = config('HUBTEL_TEST_MODE', default=False, cast=bool)
-
-if HUBTEL_API_KEY and not HUBTEL_TEST_MODE:  # noqa: F405
+# Paystack keys say what they are: sk_test_... or sk_live_.... A live key on
+# staging would take real money from whoever tests the booking flow, so
+# staging refuses to boot with one. No flag to forget; the key itself decides.
+if PAYSTACK_SECRET_KEY and not PAYSTACK_SECRET_KEY.startswith('sk_test_'):  # noqa: F405
     raise ImproperlyConfigured(  # noqa: F405
-        'Hubtel credentials are set on staging but HUBTEL_TEST_MODE is not '
-        'True. Refusing to start: a live Hubtel account here would send real '
-        'mobile money prompts to real phones during testing. Set '
-        'HUBTEL_TEST_MODE=True once you have confirmed the credentials are '
-        'for a test/sandbox merchant account.'
+        'PAYSTACK_SECRET_KEY on staging is not a test key (sk_test_...). Refusing to '
+        'start: a live key here would charge real cards and Mobile Money wallets.'
     )
-
-# Hubtel's callback must be publicly reachable. Railway gives each
-# environment its own domain, so staging and production never share one.
-HUBTEL_CALLBACK_URL = config('HUBTEL_CALLBACK_URL', default='')
 
 # ---------------------------------------------------------------------------
 # 6. Media — separate folder tree
@@ -131,6 +119,7 @@ REST_FRAMEWORK = {  # noqa: F405
         'user': '2000/hour',
         'public': '5000/hour',
         'booking': '200/hour',
+        'payment': '200/hour',
         'otp': '50/hour',
     },
 }

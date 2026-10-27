@@ -61,10 +61,14 @@ def collect() -> list[tuple[str, str]]:
     if not getattr(settings, 'CELERY_BROKER_URL', ''):
         out.append(('WARN', 'No Celery broker: emails send inline and session reminders do not '
                             'run on a schedule. Add Redis and a worker with CELERY_BEAT=1.'))
-    if not all(getattr(settings, k, '') for k in ('HUBTEL_API_KEY', 'HUBTEL_API_SECRET',
-                                                    'HUBTEL_MERCHANT_ID')):
-        out.append(('WARN', 'Hubtel credentials are not set: no online payment. Staff can still '
+    key = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
+    if not key:
+        out.append(('WARN', 'PAYSTACK_SECRET_KEY is not set: no online payment. Staff can still '
                             'record payments by hand.'))
+    elif key.startswith('sk_test_') and getattr(settings, 'ENVIRONMENT_NAME', 'production') \
+            == 'production':
+        out.append(('BLOCKER', 'PAYSTACK_SECRET_KEY is a TEST key on production - customers would '
+                               '"pay" and no money would arrive. Use the sk_live_ key.'))
     if getattr(settings, 'STUDIO_COMMISSION_PERCENT', 0) == 0:
         out.append(('WARN', 'STUDIO_COMMISSION_PERCENT is 0 - fine if ONA takes no commission on '
                             'its own sessions (OQ3); otherwise set it before the first payment.'))

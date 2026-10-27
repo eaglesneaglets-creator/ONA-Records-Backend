@@ -215,7 +215,7 @@ class TestMoney:
         detail = staff.get(u('booking-detail', b.pk)).data
         assert detail['paid_pesewas'] == 40000 and detail['paid_display'] == 'GHS 400.00'
         [t] = detail['transactions']
-        assert t['provider'] == 'hubtel' and t['status'] == 'succeeded'
+        assert t['provider'] == 'paystack' and t['status'] == 'succeeded'
         assert t['commission_percent'] == 10
         assert t['commission_pesewas'] == 4000 and t['held_pesewas'] == 0
         assert t['held_display'] == 'GHS 0.00'

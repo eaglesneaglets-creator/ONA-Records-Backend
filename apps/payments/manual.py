@@ -7,7 +7,7 @@ the ledger").
     record_refund(txn, amount, note, actor)                         -> LedgerEntry
 
 Cash at the desk, a Mobile Money transfer to ONA's number, a bank transfer:
-these go through the same ledger as a Hubtel payment — a Transaction, a HOLD,
+these go through the same ledger as a Paystack payment — a Transaction, a HOLD,
 a receipt, the customer's "payment received" email — so the books have one
 shape. What marks them as manual, and never ambiguous:
 
@@ -18,7 +18,7 @@ shape. What marks them as manual, and never ambiguous:
 
 A refund here records money ONA has ALREADY sent back by other means; it
 does not move money itself. It may be recorded against any payment, manual
-or Hubtel, and can never exceed what is still held.
+or Paystack, and can never exceed what is still held.
 """
 
 from __future__ import annotations

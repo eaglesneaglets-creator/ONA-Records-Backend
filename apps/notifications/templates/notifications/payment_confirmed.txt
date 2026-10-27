@@ -1,6 +1,7 @@
 {% autoescape off %}Hello {{ name }},
 
-We have received {{ amount }} for booking {{ reference }}.
+We have received {{ amount }} for booking {{ reference }}.{% if confirmed %}
+Your session is confirmed.{% endif %}
 
   Session: {{ when }}
   Room:    {{ room }}, with {{ engineer }}

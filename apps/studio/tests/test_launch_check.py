@@ -17,7 +17,7 @@ def ready(settings):
     settings.EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     settings.BOOKING_REQUIRES_VERIFIED_EMAIL = True
     settings.CELERY_BROKER_URL = 'redis://x'
-    settings.HUBTEL_API_KEY = settings.HUBTEL_API_SECRET = settings.HUBTEL_MERCHANT_ID = 'set'
+    settings.PAYSTACK_SECRET_KEY = 'sk_live_set'
     settings.STUDIO_COMMISSION_PERCENT = 10
     Faq.objects.all().delete()
     Room.objects.create(name='Live Room', description='Real tracking room.', hourly_rate_pesewas=20000)
@@ -61,13 +61,21 @@ def test_nothing_to_book_is_a_blocker(settings):
 
 
 def test_missing_payments_and_commission_are_warnings(ready, settings):
-    settings.HUBTEL_API_KEY = ''
+    settings.PAYSTACK_SECRET_KEY = ''
     settings.STUDIO_COMMISSION_PERCENT = 0
     settings.CELERY_BROKER_URL = ''
     warns = ' '.join(m for lvl, m in collect() if lvl == 'WARN')
-    assert 'Hubtel' in warns and 'COMMISSION' in warns and 'Celery' in warns
+    assert 'PAYSTACK' in warns and 'COMMISSION' in warns and 'Celery' in warns
 
 
 def test_placeholder_faq_blocks(ready):
     Faq.objects.create(question='Lorem ipsum?', answer='Dolor.')
     assert any('FAQ' in m for lvl, m in collect() if lvl == 'BLOCKER')
+
+
+def test_a_paystack_test_key_blocks_production_only(ready, settings):
+    settings.PAYSTACK_SECRET_KEY = 'sk_test_x'
+    settings.ENVIRONMENT_NAME = 'production'
+    assert any('TEST key' in m for lvl, m in collect() if lvl == 'BLOCKER')
+    settings.ENVIRONMENT_NAME = 'staging'
+    assert not any('TEST key' in m for lvl, m in collect())

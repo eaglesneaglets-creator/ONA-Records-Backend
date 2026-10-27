@@ -36,13 +36,13 @@ from core.mixins.timestamp import TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class Provider(models.TextChoices):
-    HUBTEL = 'hubtel', 'Hubtel'
+    PAYSTACK = 'paystack', 'Paystack'  # ADR-018: card and Mobile Money online
     # Money ONA received outside the platform and recorded by hand (Task 16).
     MANUAL = 'manual', 'Recorded by ONA staff'
 
 
 class PaymentMethod(models.TextChoices):
-    """How money recorded by staff arrived (Task 16). Empty for Hubtel, whose
+    """How money recorded by staff arrived (Task 16). Empty for Paystack, whose
     own record says which channel the customer used."""
     CASH = 'cash', 'Cash'
     MOBILE_MONEY = 'mobile_money', 'Mobile Money'

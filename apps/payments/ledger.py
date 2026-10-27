@@ -7,7 +7,7 @@ and its replay, or two staff clicking "release" — are serialised, and the
 second sees the first's entry. Balances are always computed from entries,
 never stored, so there is nothing to drift.
 
-    open_transaction(booking, provider)       -> Transaction (pending)
+    open_transaction(booking, provider, ...)  -> Transaction (pending)
     mark_succeeded(txn, provider_ref)         -> HOLD entry (idempotent)
     mark_failed(txn, reason)
     release(txn, beneficiary, actor)          -> RELEASE + Commission   [v0.4]
@@ -67,32 +67,39 @@ def _locked(txn: Transaction) -> Transaction:
     return Transaction.objects.select_for_update().get(pk=txn.pk)
 
 
-def open_transaction(booking, provider: str = Provider.HUBTEL) -> Transaction:
-    """A pending payment for a booking, at the booking's frozen total."""
-    if booking.total_pesewas <= 0:
-        raise LedgerError('A booking with no total cannot be paid for.')
+def open_transaction(booking, provider: str = Provider.PAYSTACK, amount_pesewas: int | None = None,
+                     provider_ref: str | None = None) -> Transaction:
+    """
+    A pending payment for a booking — by default for the booking's frozen
+    total; for what is still owed when part was paid another way.
+    """
+    amount = booking.total_pesewas if amount_pesewas is None else amount_pesewas
+    if type(amount) is not int or amount <= 0:
+        raise LedgerError('A payment must be a positive whole number of pesewas.')
     return Transaction.objects.create(
         customer=booking.customer, booking=booking, provider=provider,
-        amount_pesewas=booking.total_pesewas,
+        amount_pesewas=amount, provider_ref=provider_ref,
         commission_percent=studio_commission_percent(),
     )
 
 
 @db.atomic
 def mark_succeeded(txn: Transaction, provider_ref: str | None = None,
-                   actor=None, note: str = '') -> LedgerEntry:
+                   actor=None, note: str = '', provider_verified: bool = False) -> LedgerEntry:
     """
     The provider confirmed the money. Hold it — exactly once.
 
     Idempotent: a second call (a replayed callback) returns the existing hold
     and changes nothing. A transaction already marked failed cannot succeed
-    here; that needs a human to look at it.
+    here — unless `provider_verified`: the provider's own verify endpoint says
+    the money arrived, so our earlier "failed" was an inference (a checkout
+    left unfinished) and the money is real. Refusing it would lose a payment.
     """
     txn = _locked(txn)
     existing = LedgerEntry.objects.filter(transaction=txn, entry_type=EntryType.HOLD).first()
     if existing is not None:
         return existing
-    if txn.status == TransactionStatus.FAILED:
+    if txn.status == TransactionStatus.FAILED and not provider_verified:
         raise LedgerError('This transaction already failed; it cannot now succeed.')
 
     txn.status = TransactionStatus.SUCCEEDED

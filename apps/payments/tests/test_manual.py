@@ -149,7 +149,7 @@ class TestRecordRefund:
         # Refunded money is owed again.
         assert pay(w, amount_pesewas=30000, reference='MOMO-9').status_code == 201
 
-    def test_a_hubtel_payment_can_be_refunded_by_staff_too(self, w):
+    def test_an_online_payment_can_be_refunded_by_staff_too(self, w):
         txn = ledger.open_transaction(w['b'])
         ledger.mark_succeeded(txn, provider_ref='HUB-2')
         assert self.refund(w, txn, amount_pesewas=40000).status_code == 200

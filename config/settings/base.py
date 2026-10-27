@@ -42,7 +42,7 @@ LOCAL_APPS = [
     'apps.requests',       # customer RFQs and proposals
     'apps.projects',       # project lifecycle, milestones, deliverables
     'apps.messaging',      # masked threads, contact-info filtering
-    'apps.payments',       # escrow ledger, Hubtel, commission
+    'apps.payments',       # escrow ledger, Paystack, commission
     'apps.reviews',        # two-way ratings
     'apps.notifications',  # pluggable channels
     'apps.content',        # staff-edited site content (FAQ)
@@ -132,6 +132,9 @@ REST_FRAMEWORK = {
         # Creating bookings. Holds a slot without payment until Phase 2, so
         # this is part of the slot-squatting defence, with the per-customer cap.
         'booking': '30/hour',
+        # Starting a checkout or checking its outcome. Each start calls
+        # Paystack, so it is bounded per customer.
+        'payment': '30/hour',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.handler.api_exception_handler',
 }
@@ -187,14 +190,17 @@ BOOKING_FEE_PESEWAS = config('BOOKING_FEE_PESEWAS', default=4800, cast=int)
 FREE_CANCELLATION_HOURS = config('FREE_CANCELLATION_HOURS', default=48, cast=int)
 
 # ---------------------------------------------------------------------------
-# Hubtel — mobile money
+# Paystack — card and Mobile Money online (ADR-018)
 # ---------------------------------------------------------------------------
-HUBTEL_API_KEY = config('HUBTEL_API_KEY', default='')
-HUBTEL_API_SECRET = config('HUBTEL_API_SECRET', default='')
-HUBTEL_MERCHANT_ID = config('HUBTEL_MERCHANT_ID', default='')
-HUBTEL_POS_SALES_ID = config('HUBTEL_POS_SALES_ID', default='')
-HUBTEL_CALLBACK_URL = config('HUBTEL_CALLBACK_URL', default='')
+# Only the SECRET key is needed: the redirect flow never loads Paystack's JS,
+# so the public key has no use here. Empty = online payment switched off;
+# staff still record payments by hand.
+PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
+# Where Paystack sends the customer back. Defaults to the frontend's return
+# page; set only to override.
+PAYSTACK_CALLBACK_URL = config('PAYSTACK_CALLBACK_URL', default='')
 
+# SMS (not used in v0.1) — Hubtel's SMS API, independent of payments.
 HUBTEL_SMS_CLIENT_ID = config('HUBTEL_SMS_CLIENT_ID', default='')
 HUBTEL_SMS_CLIENT_SECRET = config('HUBTEL_SMS_CLIENT_SECRET', default='')
 HUBTEL_SMS_SENDER_ID = config('HUBTEL_SMS_SENDER_ID', default='ONARecords')
@@ -249,5 +255,11 @@ CELERY_BEAT_SCHEDULE = {
     'send-due-reminders': {
         'task': 'apps.notifications.tasks.send_due_reminders',
         'schedule': 15 * 60,
+    },
+    # Paystack only sends webhooks for successes; failures, abandoned
+    # checkouts and lost webhooks are found by asking (apps/payments/checkout.py).
+    'reconcile-paystack': {
+        'task': 'apps.payments.tasks.reconcile_paystack',
+        'schedule': 10 * 60,
     },
 }

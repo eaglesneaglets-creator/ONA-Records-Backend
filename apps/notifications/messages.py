@@ -117,7 +117,8 @@ def payment_confirmed(booking, receipt) -> Email:
     from apps.payments.pdf import render_receipt
 
     ctx = {**booking_context(booking), 'amount': format_ghs(receipt.amount_pesewas),
-           'receipt_number': receipt.number}
+           'receipt_number': receipt.number,
+           'confirmed': booking.status == 'confirmed'}
     email = _render('payment_confirmed', f'Payment received — {booking.reference}', ctx)
     email.attachments.append((f'ONA-receipt-{receipt.number}.pdf', render_receipt(receipt),
                               'application/pdf'))

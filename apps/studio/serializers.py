@@ -135,6 +135,27 @@ class BookingSerializer(serializers.ModelSerializer):
         from apps.payments.money import format_ghs
         return format_ghs(self.get_paid_pesewas(obj))
 
+    outstanding_pesewas = serializers.SerializerMethodField()
+    outstanding_display = serializers.SerializerMethodField()
+    # Whether to show "Pay now": Paystack configured, the booking still holds
+    # its slot, has not ended, and something is owed (ADR-018).
+    can_pay_online = serializers.SerializerMethodField()
+
+    def get_outstanding_pesewas(self, obj) -> int:
+        return max(obj.total_pesewas - self.get_paid_pesewas(obj), 0)
+
+    def get_outstanding_display(self, obj) -> str:
+        from apps.payments.money import format_ghs
+        return format_ghs(self.get_outstanding_pesewas(obj))
+
+    def get_can_pay_online(self, obj) -> bool:
+        from django.utils import timezone
+
+        from apps.payments import paystack
+        return (paystack.is_configured()
+                and obj.status in (BookingStatus.PENDING, BookingStatus.CONFIRMED)
+                and obj.end_at > timezone.now() and self.get_outstanding_pesewas(obj) > 0)
+
     def get_professional(self, obj) -> dict | None:
         from apps.marketplace.serializers import ProfessionalPublicSerializer
         pro = obj.assigned_professional
@@ -156,7 +177,8 @@ class BookingSerializer(serializers.ModelSerializer):
                   'start_at', 'end_at', 'duration_minutes', 'total_pesewas', 'total_display',
                   'notes', 'created_at', 'can_change', 'has_receipt',
                   'professional', 'professional_fee_pesewas', 'professional_fee_display',
-                  'paid_pesewas', 'paid_display')
+                  'paid_pesewas', 'paid_display', 'outstanding_pesewas', 'outstanding_display',
+                  'can_pay_online')
         read_only_fields = fields
 
 

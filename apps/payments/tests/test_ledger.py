@@ -126,7 +126,7 @@ class TestHold:
             mark_succeeded(b, provider_ref='SAME')
 
     def test_the_same_ref_from_different_providers_is_fine(self, world):
-        a = open_transaction(make_booking(world), provider=Provider.HUBTEL)
+        a = open_transaction(make_booking(world), provider=Provider.PAYSTACK)
         b = open_transaction(make_booking(world), provider=Provider.MANUAL)
         mark_succeeded(a, provider_ref='X1')
         mark_succeeded(b, provider_ref='X1')
