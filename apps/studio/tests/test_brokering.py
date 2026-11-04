@@ -48,7 +48,7 @@ def w(django_user_model):
         'room': Room.objects.create(name='A', hourly_rate_pesewas=20000),
         'eng': Engineer.objects.create(name='One'),
         'eng_2': Engineer.objects.create(name='Two'),
-        'svc': Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+        'svc': Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
         'pro': Professional.objects.create(
             name='Kwesi Mensah', stage_name='KweSound', skills=['guitar'],
             rate_type=RateType.PER_SONG, rate_pesewas=30000, phone='0244123456',

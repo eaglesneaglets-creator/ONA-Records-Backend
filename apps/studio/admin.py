@@ -49,7 +49,8 @@ class ServiceAdmin(CatalogueAdmin):
     list_display = ('name', 'base_price_display', 'base_price_pesewas', 'duration_minutes',
                     'is_active', 'sort_order', 'updated_at')
     list_editable = ('is_active', 'sort_order')
-    fields = ('name', 'description', 'base_price_pesewas', 'duration_minutes', 'is_active',
+    fields = ('name', 'description', 'base_price_pesewas', 'price_unit', 'category', 'duration_minutes',
+              'is_active',
               'sort_order', 'id', 'created_at', 'updated_at', 'deleted_at', 'deleted_by')
 
 
@@ -99,7 +100,7 @@ class StudioBookingAdmin(admin.ModelAdmin):
     # Money and who-arranged-it are read-only here: re-pricing goes through
     # the ONA console (apps/studio/brokering.py), which revises the invoice,
     # refuses once paid, audits the change and emails the customer.
-    readonly_fields = ('id', 'reference', 'total_pesewas', 'assigned_professional',
+    readonly_fields = ('id', 'reference', 'total_pesewas', 'quantity', 'assigned_professional',
                        'professional_fee_pesewas', 'created_by', 'created_at', 'updated_at',
                        'deleted_at', 'deleted_by')
     raw_id_fields = ('customer',)

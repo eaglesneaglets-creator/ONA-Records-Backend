@@ -37,17 +37,20 @@ from apps.notifications.models import Kind
 from apps.payments.documents import DocumentError, has_payment, issue_invoice, revise_invoice
 from core.models import AuditLog
 
-from .availability import CLOSE_HOUR, OPEN_HOUR, STUDIO_TZ, is_free
+from .availability import STUDIO_TZ, always_open, close_hour, hours_label, is_free, open_hour
 from .models import BookingStatus, Engineer, Room, Service, StudioBooking
+from .pricing import MAX_QUANTITY, PricingError, quote
 
 STAFF_MAX_HOURS = 12
 MAX_FEE_PESEWAS = 100_000_000  # GHS 1,000,000 — a typo guard, not a business rule
 
 
 def outside_hours(start, end) -> bool:
+    if always_open():
+        return False
     s, e = start.astimezone(STUDIO_TZ), end.astimezone(STUDIO_TZ)
-    closes = s.replace(hour=CLOSE_HOUR, minute=0, second=0, microsecond=0)
-    return s.hour < OPEN_HOUR or e > closes
+    closes = s.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(hours=close_hour())
+    return s.hour < open_hour() or e > closes
 
 
 class NewCustomerSerializer(serializers.Serializer):
@@ -76,6 +79,8 @@ class StaffBookingCreateSerializer(serializers.Serializer):
     service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.active())
     start_at = serializers.DateTimeField()
     hours = serializers.IntegerField(min_value=1, max_value=STAFF_MAX_HOURS)
+    quantity = serializers.IntegerField(min_value=1, max_value=MAX_QUANTITY, required=False,
+                                        default=1)
     notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
     status = serializers.ChoiceField(
@@ -109,7 +114,7 @@ class StaffBookingCreateSerializer(serializers.Serializer):
         end = start + timedelta(hours=attrs['hours'])
         if outside_hours(start, end) and not attrs.get('allow_outside_hours'):
             raise serializers.ValidationError({'outside_hours': (
-                f'This session is outside opening hours ({OPEN_HOUR:02d}:00–{CLOSE_HOUR:02d}:00). '
+                f'This session is outside opening hours ({hours_label()}). '
                 'Confirm you mean it, and make sure the studio will be staffed.')})
 
         ok, why = is_free(room=attrs['room'], engineer=attrs['engineer'],
@@ -119,7 +124,12 @@ class StaffBookingCreateSerializer(serializers.Serializer):
 
         attrs['end_at'] = end
         attrs['outside_hours'] = outside_hours(start, end)
-        attrs['total_pesewas'] = attrs['room'].hourly_rate_pesewas * attrs['hours'] + fee
+        try:
+            q = quote(attrs['room'], attrs['service'], attrs['hours'], attrs['quantity'])
+        except PricingError as exc:
+            raise serializers.ValidationError({exc.field: str(exc)})
+        attrs['quantity'] = q.quantity
+        attrs['total_pesewas'] = q.total_pesewas + fee
         return attrs
 
     def create(self, validated):

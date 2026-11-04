@@ -43,7 +43,8 @@ def _bookings_url() -> str:
 
 
 def _render(template: str, subject: str, ctx: dict) -> Email:
-    ctx = {**ctx, 'subject': subject, 'bookings_url': _bookings_url()}
+    ctx = {**ctx, 'subject': subject, 'bookings_url': _bookings_url(),
+           'terms_url': f'{settings.FRONTEND_URL}/legal/terms'}
     text = render_to_string(f'notifications/{template}.txt', ctx).strip() + '\n'
     html = render_to_string('notifications/base.html', {
         **ctx, 'body': render_to_string(f'notifications/{template}.txt', ctx).strip(),
@@ -85,9 +86,18 @@ def booking_rescheduled(booking) -> Email:
 
 
 def booking_cancelled(booking) -> Email:
+    from core.models import AuditLog
+
     from apps.studio.money import net_paid
     held = net_paid(booking)
-    ctx = {**booking_context(booking), 'held': format_ghs(held) if held > 0 else ''}
+    last = (AuditLog.objects.filter(target_type='studio.studiobooking',
+                                    target_id=str(booking.pk))
+            .filter(action__in=['booking.cancelled', 'booking.released_unpaid'])
+            .order_by('-created_at').first())
+    meta = last.metadata if last else {}
+    ctx = {**booking_context(booking), 'held': format_ghs(held) if held > 0 else '',
+           'released': bool(last and last.action == 'booking.released_unpaid'),
+           'credit_until': meta.get('credit_until') or ''}
     return _render('booking_cancelled', f'Booking cancelled — {booking.reference}', ctx)
 
 
@@ -115,10 +125,13 @@ def booking_updated(booking) -> Email:
 
 def payment_confirmed(booking, receipt) -> Email:
     from apps.payments.pdf import render_receipt
+    from apps.studio.money import net_paid
 
     ctx = {**booking_context(booking), 'amount': format_ghs(receipt.amount_pesewas),
            'receipt_number': receipt.number,
-           'confirmed': booking.status == 'confirmed'}
+           'confirmed': booking.status == 'confirmed',
+           'balance': format_ghs(max(booking.total_pesewas - net_paid(booking), 0))
+           if booking.total_pesewas > net_paid(booking) else ''}
     email = _render('payment_confirmed', f'Payment received — {booking.reference}', ctx)
     email.attachments.append((f'ONA-receipt-{receipt.number}.pdf', render_receipt(receipt),
                               'application/pdf'))

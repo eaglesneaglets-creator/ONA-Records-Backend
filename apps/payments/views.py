@@ -40,6 +40,7 @@ class _PaymentThrottled(APIView):
 
 class CheckoutSerializer(serializers.Serializer):
     booking = serializers.UUIDField()
+    pay = serializers.ChoiceField(choices=['deposit', 'full'], default='deposit')
 
 
 class CheckoutView(_PaymentThrottled):
@@ -53,7 +54,8 @@ class CheckoutView(_PaymentThrottled):
         if booking is None:
             return Response({'detail': 'Booking not found.'}, status=status.HTTP_404_NOT_FOUND)
         try:
-            url, reference = start_checkout(booking, request.user, request=request)
+            url, reference = start_checkout(booking, request.user,
+                                            pay=body.validated_data['pay'], request=request)
         except (CheckoutRefused, LedgerError) as exc:
             return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except paystack.PaystackError as exc:

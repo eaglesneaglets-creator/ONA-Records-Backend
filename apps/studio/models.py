@@ -95,9 +95,13 @@ class CatalogueItem(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
 
 
 class Room(CatalogueItem):
+    # Optional room hire, charged per hour ON TOP of the service price
+    # (apps/studio/pricing.py). Empty for ONA: "flexible pricing based on
+    # service, engineer included".
     hourly_rate_pesewas = models.PositiveIntegerField(
-        validators=[MinValueValidator(1)],
-        help_text='Integer pesewas. GHS 200.00 = 20000.',
+        null=True, blank=True, validators=[MinValueValidator(1)],
+        help_text='Optional room hire per hour, in integer pesewas, added to the service '
+                  'price. Leave empty when the service price covers the room.',
     )
     capacity = models.PositiveSmallIntegerField(
         default=1,
@@ -106,7 +110,7 @@ class Room(CatalogueItem):
 
     @property
     def hourly_rate_display(self) -> str:
-        return format_ghs(self.hourly_rate_pesewas)
+        return format_ghs(self.hourly_rate_pesewas) if self.hourly_rate_pesewas else ''
 
 
 class Engineer(CatalogueItem):
@@ -125,19 +129,35 @@ class Engineer(CatalogueItem):
     )
 
 
+class PriceUnit(models.TextChoices):
+    """What one `base_price_pesewas` buys (apps/studio/pricing.py)."""
+    HOUR = 'hour', 'hour'
+    DAY = 'day', '8-hour day'
+    SONG = 'song', 'song'
+    TRACK = 'track', 'track'
+
+
 class Service(CatalogueItem):
     base_price_pesewas = models.PositiveIntegerField(
         validators=[MinValueValidator(1)],
-        help_text='Integer pesewas for one unit of `duration_minutes`.',
+        help_text='Integer pesewas for one unit (an hour, a day, a song or a track).',
     )
+    price_unit = models.CharField(max_length=8, choices=PriceUnit.choices,
+                                  default=PriceUnit.HOUR)
+    # How the price list is grouped for customers ("Space & Studio Rental").
+    category = models.CharField(max_length=60, blank=True)
     duration_minutes = models.PositiveIntegerField(
         validators=[MinValueValidator(15)],
-        help_text='Default session length. Bookings may extend it in whole units.',
+        help_text='Typical studio time, shown as guidance. A day is always 8 hours.',
     )
 
     @property
     def base_price_display(self) -> str:
         return format_ghs(self.base_price_pesewas)
+
+    @property
+    def unit_label(self) -> str:
+        return f'per {self.get_price_unit_display()}'
 
 
 class Package(CatalogueItem):
@@ -252,8 +272,8 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     cannot both commit. Postgres `EXCLUDE USING gist` with `btree_gist`; see
     docs/learning/postgres-exclusion-constraints.md.
 
-    Money: `total_pesewas` is computed at creation from the room rate and
-    duration, and frozen. A later price change must not re-price a booking
+    Money: `total_pesewas` is computed at creation by apps/studio/pricing.py
+    (service price, plus any room hire), and frozen. A later price change must not re-price a booking
     someone already agreed to.
     """
 
@@ -270,6 +290,9 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     reference = models.CharField(max_length=12, unique=True, default=generate_reference,
                                  editable=False)
     total_pesewas = models.PositiveIntegerField(help_text='Frozen at creation. Integer pesewas.')
+    quantity = models.PositiveSmallIntegerField(
+        default=1, validators=[MinValueValidator(1)],
+        help_text='Songs or tracks, for services priced per song/track; 1 otherwise.')
     notes = models.TextField(blank=True, help_text='From the customer, for the engineer.')
 
     # Manual brokering (Task 15). A professional ONA assigns to the session —
@@ -332,14 +355,25 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
     @property
     def can_change(self) -> bool:
         """
-        May the customer still cancel or move this booking?
+        May the customer still cancel or move this booking themselves?
 
-        Any time before the session starts, while it holds a slot. This is the
-        v0.1 rule while no money moves; ONA sets the real cancellation window
-        (and what is refunded) with payments in Phase 2.
+        ONA's terms: changes need at least FREE_CANCELLATION_HOURS (48) notice;
+        inside that the deposit is forfeit and the customer talks to ONA. A
+        booking with nothing paid has nothing to forfeit, so it can be changed
+        until it starts.
         """
+        from datetime import timedelta
+
+        from django.conf import settings
         from django.utils import timezone
-        return self.holds_slot and self.start_at > timezone.now() and not self.is_deleted
+
+        from .money import net_paid
+        now = timezone.now()
+        if not (self.holds_slot and self.start_at > now and not self.is_deleted):
+            return False
+        if net_paid(self) <= 0:
+            return True
+        return self.start_at - now >= timedelta(hours=settings.FREE_CANCELLATION_HOURS)
 
     @property
     def duration_minutes(self) -> int:

@@ -73,7 +73,12 @@ class Transaction(UUIDPrimaryKeyMixin, TimestampMixin):
         help_text="The provider's id for this charge. Unique per provider — it is the "
                   'idempotency key a replayed callback is matched on.',
     )
-    amount_pesewas = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+    amount_pesewas = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)],
+        help_text='What goes towards the booking — what the ledger holds and the receipt shows.')
+    fee_pesewas = models.PositiveIntegerField(
+        default=0, help_text="Processing fee charged on top and kept by the provider "
+                             "(ONA passes Paystack's fee on). Never booking money.")
     currency = models.CharField(max_length=3, default='GHS', editable=False)
     status = models.CharField(max_length=10, choices=TransactionStatus.choices,
                               default=TransactionStatus.PENDING, db_index=True)

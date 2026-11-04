@@ -28,11 +28,26 @@ from .models import BlockKind, CalendarBlock, SLOT_HOLDING_STATUSES, StudioBooki
 
 STUDIO_TZ = ZoneInfo(settings.TIME_ZONE)
 
-# Opening hours. Configurable by ONA later (Phase 3 content management);
-# a constant is correct until someone needs to change it.
-OPEN_HOUR = 9
-CLOSE_HOUR = 21
 SLOT_MINUTES = 60
+
+
+# Opening hours come from settings (STUDIO_OPEN_HOUR / STUDIO_CLOSE_HOUR,
+# 0 and 24 for ONA: "24/7, by prior booking only"), read at call time so a
+# change needs no code. 0–24 means sessions may also run past midnight.
+def open_hour() -> int:
+    return settings.STUDIO_OPEN_HOUR
+
+
+def close_hour() -> int:
+    return settings.STUDIO_CLOSE_HOUR
+
+
+def always_open() -> bool:
+    return open_hour() == 0 and close_hour() == 24
+
+
+def hours_label() -> str:
+    return 'open 24 hours' if always_open() else f'{open_hour():02d}:00–{close_hour():02d}:00'
 MAX_RANGE_DAYS = 31
 
 AVAILABLE, BOOKED, MAINTENANCE, HOLIDAY = 'available', 'booked', 'maintenance', 'holiday'
@@ -53,8 +68,9 @@ class Slot:
 
 def day_slots(day: date) -> list[tuple[datetime, datetime]]:
     """Opening-hours slots for one calendar day, in the studio timezone."""
-    start = datetime.combine(day, time(OPEN_HOUR), tzinfo=STUDIO_TZ)
-    end = datetime.combine(day, time(CLOSE_HOUR), tzinfo=STUDIO_TZ)
+    midnight = datetime.combine(day, time.min, tzinfo=STUDIO_TZ)
+    start = midnight + timedelta(hours=open_hour())
+    end = midnight + timedelta(hours=close_hour())
     out = []
     cursor = start
     step = timedelta(minutes=SLOT_MINUTES)

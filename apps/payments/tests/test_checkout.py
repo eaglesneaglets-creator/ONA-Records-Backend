@@ -49,7 +49,7 @@ def world(django_user_model):
         'other': django_user_model.objects.create_user(email='o@x.test', password='p-Ass-1'),
         'room': Room.objects.create(name='A', hourly_rate_pesewas=20000),
         'eng': Engineer.objects.create(name='One'),
-        'svc': Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+        'svc': Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
     }
 
 
@@ -80,15 +80,16 @@ def init_ok(**kw):
             'reference': kw.get('reference')}
 
 
-def start(booking, user=None):
+def start(booking, user=None, pay='deposit'):
     with mock.patch.object(paystack, 'initialize', side_effect=init_ok) as init:
-        url, ref = checkout.start_checkout(booking, user or booking.customer)
+        url, ref = checkout.start_checkout(booking, user or booking.customer, pay=pay)
     return ref, init
 
 
 def paid(txn, **over):
-    return {'status': 'success', 'amount': txn.amount_pesewas, 'currency': 'GHS',
-            'channel': 'mobile_money', **over}
+    # What Paystack confirms: the booking money plus the processing fee on top.
+    return {'status': 'success', 'amount': txn.amount_pesewas + txn.fee_pesewas,
+            'currency': 'GHS', 'channel': 'mobile_money', **over}
 
 
 def signed_post(event):
@@ -107,13 +108,15 @@ def charge_success(ref):
 # ---------------------------------------------------------------------------
 
 class TestCheckout:
-    def test_opens_a_pending_paystack_transaction_for_what_is_owed(self, booking):
+    def test_opens_a_pending_paystack_transaction_for_the_deposit(self, booking):
         ref, init = start(booking)
         txn = Transaction.objects.get(provider_ref=ref)
         assert txn.provider == Provider.PAYSTACK and txn.status == TransactionStatus.PENDING
-        assert txn.amount_pesewas == 40000
+        # ONA: 50% deposit; Paystack's 1.95% added on top, grossed up.
+        assert txn.amount_pesewas == 20000 and txn.fee_pesewas == 398
         sent = init.call_args.kwargs
-        assert sent['amount_pesewas'] == 40000 and sent['email'] == 'c@x.test'
+        assert sent['amount_pesewas'] == 20398 and sent['email'] == 'c@x.test'
+        assert sent['channels'] == ['mobile_money']
         assert sent['callback_url'] == 'https://ona.test/customer/payments/return'
         assert ref.startswith(booking.reference + '-')
         # Never confirmed optimistically: nothing is held, the booking waits.
@@ -123,9 +126,9 @@ class TestCheckout:
 
     def test_charges_only_the_balance_after_a_part_payment_by_hand(self, booking, world):
         from apps.payments.manual import record_payment
-        record_payment(booking, 15000, 'cash', '', '', actor=None)
+        record_payment(booking, 25000, 'cash', '', '', actor=None)  # more than the deposit
         ref, init = start(booking)
-        assert init.call_args.kwargs['amount_pesewas'] == 25000
+        assert Transaction.objects.get(provider_ref=ref).amount_pesewas == 15000
 
     def test_each_attempt_has_its_own_reference(self, booking):
         a, _ = start(booking)
@@ -455,9 +458,159 @@ class TestCanPayOnline:
         assert self._get(booking)['can_pay_online'] is False
 
     def test_not_once_paid(self, booking):
-        ref, _ = start(booking)
+        ref, _ = start(booking, pay='full')
         txn = Transaction.objects.get(provider_ref=ref)
         with mock.patch.object(paystack, 'verify', return_value=paid(txn)):
             checkout.settle(ref)
         data = self._get(booking)
         assert data['can_pay_online'] is False and data['outstanding_pesewas'] == 0
+        assert data['payment_options'] == []
+
+
+# ---------------------------------------------------------------------------
+# ONA's terms (Nov 2026): 50% deposit, fee passed on, 1-hour hold, 48h window
+# ---------------------------------------------------------------------------
+
+def settle_ok(ref):
+    txn = Transaction.objects.get(provider_ref=ref)
+    with mock.patch.object(paystack, 'verify', return_value=paid(txn)):
+        checkout.settle(ref)
+    return Transaction.objects.get(pk=txn.pk)
+
+
+class TestDepositAndBalance:
+    def test_nothing_paid_offers_deposit_or_full_with_the_fee_itemised(self, booking):
+        opts = {o.kind: o for o in checkout.payment_options(booking)}
+        assert set(opts) == {'deposit', 'full'}
+        assert opts['deposit'].amount_pesewas == 20000 and opts['deposit'].fee_pesewas == 398
+        assert opts['full'].amount_pesewas == 40000 and opts['full'].charge_pesewas == 40796
+
+    def test_the_deposit_confirms_and_leaves_the_balance(self, booking):
+        settle_ok(start(booking)[0])
+        booking.refresh_from_db()
+        assert booking.status == BookingStatus.CONFIRMED
+        opts = checkout.payment_options(booking)
+        assert [(o.kind, o.amount_pesewas) for o in opts] == [('balance', 20000)]
+
+    def test_paying_the_balance_completes_it(self, booking):
+        settle_ok(start(booking)[0])
+        txn = settle_ok(start(booking)[0])     # asks for the deposit; gets the balance
+        assert txn.amount_pesewas == 20000
+        assert checkout.payment_options(booking) == []
+
+    def test_the_fee_is_never_counted_as_booking_money(self, booking):
+        from apps.studio.money import net_paid
+        txn = settle_ok(start(booking, pay='full')[0])
+        assert txn.fee_pesewas > 0 and net_paid(booking) == 40000
+        assert LedgerEntry.objects.get(transaction=txn).amount_pesewas == 40000
+        assert txn.receipt.amount_pesewas == 40000
+
+    def test_fee_can_be_switched_off(self, booking, settings):
+        settings.PAYSTACK_PASS_FEE_TO_CUSTOMER = False
+        assert all(o.fee_pesewas == 0 for o in checkout.payment_options(booking))
+
+    def test_full_payment_by_endpoint(self, booking):
+        with mock.patch.object(paystack, 'initialize', side_effect=init_ok) as init:
+            res = client_for(booking.customer).post(
+                '/api/v1/payments/checkout/', {'booking': str(booking.pk), 'pay': 'full'},
+                format='json')
+        assert res.status_code == 201
+        assert init.call_args.kwargs['amount_pesewas'] == 40796
+
+    def test_the_api_lists_the_options(self, booking):
+        data = client_for(booking.customer).get(f'/api/v1/studio/bookings/{booking.pk}/').data
+        assert [o['kind'] for o in data['payment_options']] == ['deposit', 'full']
+        assert data['payment_options'][0]['charge_display'] == 'GHS 203.98'
+        assert data['deposit_display'] == 'GHS 200.00' and data['secured'] is False
+
+
+def _created(b, minutes_ago):
+    StudioBooking.objects.filter(pk=b.pk).update(
+        created_at=timezone.now() - timedelta(minutes=minutes_ago))
+
+
+class TestReleaseUnpaid:
+    def test_released_after_an_hour_unpaid(self, booking):
+        _created(booking, 61)
+        assert checkout.release_unpaid() == 1
+        booking.refresh_from_db()
+        assert booking.status == BookingStatus.CANCELLED
+        assert AuditLog.objects.filter(action='booking.released_unpaid').exists()
+
+    def test_kept_inside_the_hour(self, booking):
+        _created(booking, 59)
+        assert checkout.release_unpaid() == 0
+
+    def test_kept_while_the_customer_is_paying(self, booking):
+        start(booking)
+        _created(booking, 70)
+        assert checkout.release_unpaid() == 0
+
+    def test_kept_once_anything_is_paid(self, booking):
+        from apps.payments.manual import record_payment
+        record_payment(booking, 5000, 'cash', '', '', actor=None)
+        _created(booking, 120)
+        assert checkout.release_unpaid() == 0
+
+    def test_staff_bookings_are_never_released(self, booking, world):
+        StudioBooking.objects.filter(pk=booking.pk).update(created_by=world['other'])
+        _created(booking, 120)
+        assert checkout.release_unpaid() == 0
+
+    def test_not_while_online_payment_is_off(self, booking, settings):
+        settings.PAYSTACK_SECRET_KEY = ''
+        _created(booking, 120)
+        assert checkout.release_unpaid() == 0
+
+    def test_paid_just_after_release_gets_the_slot_back(self, booking):
+        ref, _ = start(booking)
+        Transaction.objects.filter(provider_ref=ref).update(
+            created_at=timezone.now() - timedelta(minutes=30))
+        _created(booking, 61)
+        checkout.release_unpaid()
+        booking.refresh_from_db()
+        assert booking.status == BookingStatus.CANCELLED
+        settle_ok(ref)
+        booking.refresh_from_db()
+        assert booking.status == BookingStatus.CONFIRMED
+        assert AuditLog.objects.filter(action='booking.reinstated').exists()
+
+    def test_the_customer_is_told_why(self, booking, django_capture_on_commit_callbacks):
+        from django.core import mail
+        _created(booking, 61)
+        with django_capture_on_commit_callbacks(execute=True):
+            checkout.release_unpaid()
+        assert 'was not paid' in mail.outbox[-1].body
+
+
+class TestFortyEightHours:
+    def _booking_in(self, world, hours):
+        start_at = timezone.now().replace(minute=0, second=0, microsecond=0) \
+            + timedelta(hours=hours)
+        return StudioBooking.objects.create(
+            customer=world['customer'], room=world['room'], engineer=world['eng'],
+            service=world['svc'], start_at=start_at, end_at=start_at + timedelta(hours=1),
+            total_pesewas=40000)
+
+    def test_unpaid_can_change_until_it_starts(self, world):
+        assert self._booking_in(world, 5).can_change
+
+    def test_paid_cannot_change_inside_48_hours(self, world):
+        b = self._booking_in(world, 30)
+        settle_ok(start(b)[0])
+        b.refresh_from_db()
+        assert not b.can_change
+
+    def test_paid_can_change_with_48_hours_notice(self, world):
+        b = self._booking_in(world, 72)
+        settle_ok(start(b)[0])
+        b.refresh_from_db()
+        assert b.can_change
+
+    def test_cancelling_a_paid_booking_records_the_credit(self, world):
+        b = self._booking_in(world, 72)
+        settle_ok(start(b)[0])
+        res = client_for(b.customer).post(f'/api/v1/studio/bookings/{b.pk}/cancel/')
+        assert res.status_code == 200
+        meta = AuditLog.objects.get(action='booking.cancelled').metadata
+        assert meta['credit_pesewas'] == 20000 and meta['credit_until']

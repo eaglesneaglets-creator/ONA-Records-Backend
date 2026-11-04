@@ -22,7 +22,7 @@ def ready(settings):
     Faq.objects.all().delete()
     Room.objects.create(name='Live Room', description='Real tracking room.', hourly_rate_pesewas=20000)
     Engineer.objects.create(name='Kojo', bio='Mix engineer.')
-    Service.objects.create(name='Recording', base_price_pesewas=1, duration_minutes=60)
+    Service.objects.create(name='Recording', base_price_pesewas=0, duration_minutes=60)
 
 
 def test_a_ready_environment_passes(ready, capsys):
@@ -65,7 +65,8 @@ def test_missing_payments_and_commission_are_warnings(ready, settings):
     settings.STUDIO_COMMISSION_PERCENT = 0
     settings.CELERY_BROKER_URL = ''
     warns = ' '.join(m for lvl, m in collect() if lvl == 'WARN')
-    assert 'PAYSTACK' in warns and 'COMMISSION' in warns and 'Celery' in warns
+    assert 'PAYSTACK' in warns and 'INVOICE_CONTACT' in warns and 'Celery' in warns
+    assert 'COMMISSION' not in warns  # ONA: 0% on studio sessions (OQ3 answered)
 
 
 def test_placeholder_faq_blocks(ready):

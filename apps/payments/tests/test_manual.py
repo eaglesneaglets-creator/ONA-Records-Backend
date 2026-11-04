@@ -37,7 +37,7 @@ def w(django_user_model):
     room = Room.objects.create(name='A', hourly_rate_pesewas=20000)
     booking = StudioBooking.objects.create(
         customer=ama, room=room, engineer=Engineer.objects.create(name='One'),
-        service=Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+        service=Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
         start_at=at(5, 10), end_at=at(5, 12), total_pesewas=40000)
     c = APIClient()
     c.force_authenticate(admin)

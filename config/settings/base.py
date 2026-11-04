@@ -8,6 +8,7 @@ if a value must differ per environment, it belongs in that module.
 
 from pathlib import Path
 from decouple import config, Csv
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
@@ -189,6 +190,14 @@ BOOKING_FEE_PESEWAS = config('BOOKING_FEE_PESEWAS', default=4800, cast=int)
 
 FREE_CANCELLATION_HOURS = config('FREE_CANCELLATION_HOURS', default=48, cast=int)
 
+# Opening hours, studio time (Africa/Accra). ONA: "24/7, by prior booking
+# only" — 0 and 24. Anything else, e.g. 9 and 21, closes the calendar
+# outside those hours and refuses sessions that run past closing.
+STUDIO_OPEN_HOUR = config('STUDIO_OPEN_HOUR', default=0, cast=int)
+STUDIO_CLOSE_HOUR = config('STUDIO_CLOSE_HOUR', default=24, cast=int)
+if not 0 <= STUDIO_OPEN_HOUR < STUDIO_CLOSE_HOUR <= 24:
+    raise ImproperlyConfigured('STUDIO_OPEN_HOUR/STUDIO_CLOSE_HOUR must satisfy 0 <= open < close <= 24.')
+
 # ---------------------------------------------------------------------------
 # Paystack — card and Mobile Money online (ADR-018)
 # ---------------------------------------------------------------------------
@@ -199,6 +208,31 @@ PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
 # Where Paystack sends the customer back. Defaults to the frontend's return
 # page; set only to override.
 PAYSTACK_CALLBACK_URL = config('PAYSTACK_CALLBACK_URL', default='')
+# Channels offered on Paystack's checkout. ONA accepts Mobile Money (and bank
+# transfer); card is off. Paystack shows only channels the account has enabled.
+PAYSTACK_CHANNELS = [c for c in config('PAYSTACK_CHANNELS', cast=Csv(),
+                                       default='mobile_money') if c]
+# ONA: "a small processing fee added to the final checkout total". Paystack's
+# local Ghana rate, in basis points (195 = 1.95%) — confirm on ONA's Paystack
+# pricing page. The fee is grossed up so ONA receives the full amount.
+PAYSTACK_PASS_FEE_TO_CUSTOMER = config('PAYSTACK_PASS_FEE_TO_CUSTOMER', default=True, cast=bool)
+PAYSTACK_FEE_BASIS_POINTS = config('PAYSTACK_FEE_BASIS_POINTS', default=195, cast=int)
+
+# ONA's booking terms (November 2026).
+BOOKING_DEPOSIT_PERCENT = config('BOOKING_DEPOSIT_PERCENT', default=50, cast=int)
+UNPAID_HOLD_MINUTES = config('UNPAID_HOLD_MINUTES', default=60, cast=int)
+DEPOSIT_CREDIT_DAYS = config('DEPOSIT_CREDIT_DAYS', default=30, cast=int)
+# Marketplace jobs (v0.3+). Studio sessions carry none: STUDIO_COMMISSION_PERCENT = 0.
+MARKETPLACE_COMMISSION_PERCENT = config('MARKETPLACE_COMMISSION_PERCENT', default=10, cast=int)
+
+# What invoices and receipts print (ONA: logo and business name, payment
+# methods and accounts, the studio manager's contact). Empty = left off, and
+# launch_check warns.
+INVOICE_BUSINESS_NAME = config('INVOICE_BUSINESS_NAME', default='ONA Records Creative Services')
+INVOICE_ADDRESS = config('INVOICE_ADDRESS', default='Accra, Ghana')
+INVOICE_TIN = config('INVOICE_TIN', default='')
+INVOICE_CONTACT = config('INVOICE_CONTACT', default='')        # "Name · phone · email"
+INVOICE_BANK_DETAILS = config('INVOICE_BANK_DETAILS', default='')  # "Bank · account name · number"
 
 # SMS (not used in v0.1) — Hubtel's SMS API, independent of payments.
 HUBTEL_SMS_CLIENT_ID = config('HUBTEL_SMS_CLIENT_ID', default='')
@@ -261,5 +295,10 @@ CELERY_BEAT_SCHEDULE = {
     'reconcile-paystack': {
         'task': 'apps.payments.tasks.reconcile_paystack',
         'schedule': 10 * 60,
+    },
+    # Unpaid self-service bookings give their slot back after UNPAID_HOLD_MINUTES.
+    'release-unpaid-bookings': {
+        'task': 'apps.payments.tasks.release_unpaid_bookings',
+        'schedule': 5 * 60,
     },
 }

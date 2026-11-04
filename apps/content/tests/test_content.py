@@ -35,7 +35,9 @@ def customer(django_user_model):
 
 class TestFaqs:
     def test_seeded_from_the_landing_page(self):
-        assert Faq.objects.count() == 6
+        # Six seeded with the landing page, plus "When is the studio open?" (0003).
+        assert Faq.objects.count() == 7
+        assert "50% deposit" in Faq.objects.get(question="When is my slot really mine?").answer
         assert Faq.objects.first().question == 'Is an engineer included?'
 
     def test_an_edited_answer_appears_publicly_and_is_audited(self, staff):
@@ -54,7 +56,7 @@ class TestFaqs:
         staff.patch(reverse('adminapi:faq-detail', args=[faq.pk]), {'is_published': False},
                     format='json')
         public = APIClient().get(reverse('content:faq-list')).data
-        assert faq.question not in [f['question'] for f in public] and len(public) == 5
+        assert faq.question not in [f['question'] for f in public] and len(public) == 6
 
     def test_create_and_delete_are_audited(self, staff):
         res = staff.post(reverse('adminapi:faq-list'),
@@ -86,7 +88,7 @@ class TestCatalogue:
         b = StudioBooking.objects.create(
             customer=django_user_model.objects.create_user(email='a@x.test', role='customer'),
             room=room, engineer=Engineer.objects.create(name='One'),
-            service=Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+            service=Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
             start_at=start, end_at=start + timedelta(hours=2), total_pesewas=40000)
 
         res = staff.patch(reverse('adminapi:room-detail', args=[room.pk]),

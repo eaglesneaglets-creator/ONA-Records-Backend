@@ -35,7 +35,7 @@ def world(django_user_model):
         'customer': django_user_model.objects.create_user(email='c@x.test', password='p-Ass-1'),
         'room': Room.objects.create(name='A', hourly_rate_pesewas=20000),
         'eng': Engineer.objects.create(name='One'),
-        'svc': Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+        'svc': Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
     }
 
 

@@ -41,7 +41,7 @@ def world(django_user_model):
         'room_b': Room.objects.create(name='B', hourly_rate_pesewas=20000),
         'eng': Engineer.objects.create(name='One'),
         'eng_2': Engineer.objects.create(name='Two'),
-        'svc': Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+        'svc': Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
     }
 
 
@@ -138,7 +138,7 @@ class TestSlotSquatting:
             assert self.post(world, at(day, 9 + i)).status_code == 201
         res = self.post(world, at(day, 15))
         assert res.status_code == 400
-        assert 'waiting for confirmation' in str(res.data)
+        assert 'unpaid bookings' in str(res.data)
 
     def test_cancelled_bookings_do_not_count_toward_the_cap(self, world):
         day = future_day()

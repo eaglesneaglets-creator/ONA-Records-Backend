@@ -1,10 +1,10 @@
 """
-Paystack client — card and Mobile Money for ONA Records (ADR-018).
+Paystack client — Mobile Money (and the other channels in
+PAYSTACK_CHANNELS) for ONA Records (ADR-018).
 
 Redirect flow: the server initialises a transaction, the customer pays on
-Paystack's hosted checkout (card, MTN MoMo, Telecel Cash, AirtelTigo Money —
-whatever ONA enables on its dashboard), and Paystack sends them back to the
-callback URL. No card number or MoMo PIN ever reaches this system.
+Paystack's hosted checkout, and Paystack sends them back to the callback URL.
+No card number or MoMo PIN ever reaches this system.
 
 Three things this module does, and nothing else:
 
@@ -57,7 +57,7 @@ def _headers() -> dict:
 
 
 def initialize(reference: str, amount_pesewas: int, email: str, callback_url: str,
-               metadata: dict | None = None) -> dict:
+               metadata: dict | None = None, channels: list[str] | None = None) -> dict:
     """
     Start a hosted checkout. Returns Paystack's `data`: authorization_url,
     access_code, reference.
@@ -80,6 +80,8 @@ def initialize(reference: str, amount_pesewas: int, email: str, callback_url: st
         # Ids only: metadata is visible on Paystack's dashboard.
         'metadata': metadata or {},
     }
+    if channels:
+        payload['channels'] = list(channels)
     logger.info('Paystack initialize: ref=%s amount_pesewas=%d', reference, amount_pesewas)
     try:
         resp = requests.post(f'{API}/transaction/initialize', json=payload,

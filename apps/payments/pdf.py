@@ -38,7 +38,9 @@ RULE = HexColor('#E5E3EA')
 TZ = ZoneInfo(settings.TIME_ZONE)
 LOGO = Path(__file__).resolve().parent / 'assets' / 'ona-icon.png'
 
-ISSUER = ('ONA Records Creative Services', 'Accra, Ghana')
+def _issuer() -> tuple[str, str]:
+    # Read at render time: settings, not code, carry ONA's legal details.
+    return settings.INVOICE_BUSINESS_NAME, settings.INVOICE_ADDRESS
 
 W, H = A4
 LEFT = 20 * mm
@@ -68,7 +70,9 @@ def _header(c: Canvas, kind: str, number: str, issued) -> float:
     c.drawString(LEFT + 18 * mm, y + 4 * mm, 'ONA RECORDS')
     c.setFont('Helvetica', 9)
     c.setFillColor(DIM)
-    c.drawString(LEFT + 18 * mm, y - 1 * mm, ISSUER[0] + ' · ' + ISSUER[1])
+    name, address = _issuer()
+    tin = f' · TIN {settings.INVOICE_TIN}' if settings.INVOICE_TIN else ''
+    c.drawString(LEFT + 18 * mm, y - 1 * mm, f'{name} · {address}{tin}')
 
     c.setFillColor(RED)
     c.setFont('Helvetica-Bold', 22)
@@ -178,15 +182,48 @@ def render_invoice(invoice) -> bytes:
     c.drawRightString(RIGHT, y, format_ghs(invoice.total_pesewas))
     c.setFillColor(DIM)
     c.setFont('Helvetica', 9)
-    paid = booking.transactions.filter(status='succeeded').exists()
-    c.drawRightString(RIGHT, y - 6 * mm, 'Paid — held by ONA until your session' if paid
-                      else 'Amount due · pay by Mobile Money when prompted')
+    from apps.payments.checkout import deposit_for
+    from apps.studio.money import net_paid
+    paid = net_paid(booking)
+    deposit = deposit_for(booking)
+    if paid >= invoice.total_pesewas:
+        status_line = 'Paid in full'
+    elif paid:
+        status_line = f'Paid {format_ghs(paid)} · balance {format_ghs(invoice.total_pesewas - paid)}'
+    else:
+        status_line = (f'{settings.BOOKING_DEPOSIT_PERCENT}% deposit {format_ghs(deposit)} '
+                       'secures the booking')
+    c.drawRightString(RIGHT, y - 6 * mm, status_line)
+    y = _payment_block(c, y - 18 * mm)
 
-    _footer(c, 'All amounts in Ghana cedis (GHS). Payments are held by ONA Records, '
-               'not passed to anyone else, until your session.')
+    _footer(c, 'All amounts in Ghana cedis (GHS). Deposits and cancellations follow ONA\'s '
+               'booking terms (onarecords: /legal/terms).')
     c.showPage()
     c.save()
     return buf.getvalue()
+
+
+def _payment_block(c: Canvas, y: float) -> float:
+    """How to pay, and who to ask — ONA's invoice details (settings)."""
+    fee = settings.PAYSTACK_FEE_BASIS_POINTS
+    lines = [
+        'HOW TO PAY',
+        'Deposit to secure the booking; the balance before or on the day of the session.',
+        'Mobile Money: from your bookings page, through Paystack'
+        + (f' (a {fee // 100}.{fee % 100:02d}% processing fee is added at checkout).'
+           if settings.PAYSTACK_PASS_FEE_TO_CUSTOMER and fee else '.'),
+    ]
+    if settings.INVOICE_BANK_DETAILS:
+        lines.append(f'Bank transfer: {settings.INVOICE_BANK_DETAILS} — quote the booking reference.')
+    if settings.INVOICE_CONTACT:
+        lines.append(f'Questions: {settings.INVOICE_CONTACT}')
+    for i, text in enumerate(lines):
+        c.setFont('Helvetica-Bold' if i == 0 else 'Helvetica', 8.5 if i == 0 else 9)
+        c.setFillColor(DIM if i == 0 else INK)
+        for j, part in enumerate(_wrap(text, 'Helvetica', 9, RIGHT - LEFT)):
+            c.drawString(LEFT, y, part)
+            y -= 5 * mm
+    return y
 
 
 def render_receipt(receipt) -> bytes:
@@ -218,9 +255,17 @@ def render_receipt(receipt) -> bytes:
     c.setFillColor(RED)
     c.drawRightString(RIGHT, y - 2 * mm, format_ghs(receipt.amount_pesewas))
     _rule(c, y - 8 * mm)
+    if txn.fee_pesewas:
+        # Itemised, as ONA asked: the fee is Paystack's, not booking money.
+        c.setFont('Helvetica', 10)
+        c.setFillColor(DIM)
+        c.drawString(LEFT, y - 15 * mm, 'Processing fee (Paystack)')
+        c.drawRightString(RIGHT, y - 15 * mm, format_ghs(txn.fee_pesewas))
+        c.drawString(LEFT, y - 21 * mm, 'Total charged')
+        c.drawRightString(RIGHT, y - 21 * mm, format_ghs(txn.amount_pesewas + txn.fee_pesewas))
 
-    _footer(c, 'Held by ONA Records until your session. If the session cannot go ahead, '
-               'you are refunded in full.')
+    _footer(c, 'Covered by ONA\'s booking terms: deposits are not refunded; with 48 hours\' '
+               'notice they carry over to a new date.')
     c.showPage()
     c.save()
     return buf.getvalue()

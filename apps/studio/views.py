@@ -236,11 +236,21 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         before = booking.status
         booking.status = BookingStatus.CANCELLED
         booking.save(update_fields=['status', 'updated_at'])
+        from django.conf import settings
+
         from .money import net_paid
+        paid = net_paid(booking)
         AuditLog.record('booking.cancelled', actor=request.user, target=booking, request=request,
                         reference=booking.reference, previous_status=before,
-                        # Held money is not refunded by a cancel; staff follow up (QA F1).
-                        paid_pesewas=net_paid(booking))
+                        # ONA's terms: the deposit is not refunded. Cancelled with
+                        # 48h notice (the only way a paid booking can be cancelled
+                        # here), it becomes credit for a session within 30 days;
+                        # staff apply it (QA F1).
+                        paid_pesewas=paid,
+                        credit_pesewas=paid,
+                        credit_until=(timezone.localdate()
+                                      + timedelta(days=settings.DEPOSIT_CREDIT_DAYS)).isoformat()
+                        if paid else None)
         notify_booking(booking, Kind.BOOKING_CANCELLED)
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data)
 

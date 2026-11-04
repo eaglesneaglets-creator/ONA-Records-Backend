@@ -38,23 +38,23 @@ def next_number(kind: str) -> str:
 
 
 def _invoice_lines(booking) -> list[dict]:
+    from apps.studio.pricing import PricingError, invoice_lines, quote
+
     hours = booking.duration_minutes // 60
-    room_total = booking.room_total_pesewas
-    unit = room_total // hours if hours else room_total
-    # The rate is derived from the frozen total, not read from the room: the
-    # room's rate may have changed since the booking was priced.
-    if unit * hours != room_total:
-        # Never fudge a line to make it add up — show one line at the total.
+    session_total = booking.room_total_pesewas
+    try:
+        q = quote(booking.room, booking.service, hours, booking.quantity)
+    except PricingError:
+        q = None
+    if q is not None and q.total_pesewas == session_total:
+        lines = invoice_lines(booking.room, booking.service, q)
+    else:
+        # A price changed since the booking was made (the total is frozen; the
+        # catalogue is not). Never fudge lines to make them add up — show one
+        # line at the frozen total.
         lines = [{
             'description': f'{booking.room.name} with engineer — {booking.service.name}',
-            'quantity': 1, 'unit_pesewas': room_total, 'total_pesewas': room_total,
-        }]
-    else:
-        lines = [{
-            # The unit price has its own column; repeating it here crowded the line.
-            'description': f'{booking.room.name} · {booking.service.name} · engineer included, '
-                           f'per hour',
-            'quantity': hours, 'unit_pesewas': unit, 'total_pesewas': room_total,
+            'quantity': 1, 'unit_pesewas': session_total, 'total_pesewas': session_total,
         }]
     pro = booking.assigned_professional
     if pro is not None and booking.professional_fee_pesewas:

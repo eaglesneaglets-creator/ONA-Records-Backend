@@ -24,7 +24,7 @@ def data(django_user_model):
     U = django_user_model.objects
     room = Room.objects.create(name='A', hourly_rate_pesewas=100)
     eng = Engineer.objects.create(name='E')
-    svc = Service.objects.create(name='S', base_price_pesewas=1, duration_minutes=60)
+    svc = Service.objects.create(name='S', base_price_pesewas=0, duration_minutes=60)
 
     def booking(user, days):
         start = timezone.now() + timedelta(days=days)

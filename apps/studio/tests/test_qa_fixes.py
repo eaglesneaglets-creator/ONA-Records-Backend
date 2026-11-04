@@ -42,7 +42,7 @@ def w(django_user_model):
         'ama': U.create_user(email='ama@x.test', password='Right-Passw0rd!', role='customer',
                              first_name='Ama', last_name='Owusu'),
         'room': room, 'eng': Engineer.objects.create(name='One'),
-        'svc': Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+        'svc': Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
     }
 
 
@@ -76,7 +76,8 @@ class TestF1PaidBookingsTellTheTruth:
             res = as_user(w['ama']).post(reverse('studio:booking-cancel', args=[b.pk]))
         assert res.status_code == 200
         assert AuditLog.objects.get(action='booking.cancelled').metadata['paid_pesewas'] == 10000
-        assert 'ONA is holding the GHS 100.00 you paid' in mail.outbox[0].body
+        body = mail.outbox[0].body
+        assert 'the GHS 100.00 you paid is not refunded' in body and 'kept as credit' in body
 
     def test_an_unpaid_cancel_email_says_nothing_about_money(
             self, w, django_capture_on_commit_callbacks):

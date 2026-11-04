@@ -48,7 +48,8 @@ class RoomAdminSerializer(_LiveNameUnique, serializers.ModelSerializer):
         fields = ('id', 'name', 'description', 'hourly_rate_pesewas', 'hourly_rate_display',
                   'capacity', 'is_active', 'sort_order', 'updated_at')
         read_only_fields = ('id', 'updated_at')
-        extra_kwargs = {'hourly_rate_pesewas': {'min_value': 1, 'max_value': MAX_PRICE}}
+        extra_kwargs = {'hourly_rate_pesewas': {'min_value': 1, 'max_value': MAX_PRICE,
+                                                'required': False, 'allow_null': True}}
 
 
 class EngineerAdminSerializer(_LiveNameUnique, serializers.ModelSerializer):
@@ -65,11 +66,13 @@ class EngineerAdminSerializer(_LiveNameUnique, serializers.ModelSerializer):
 
 class ServiceAdminSerializer(_LiveNameUnique, serializers.ModelSerializer):
     base_price_display = serializers.CharField(read_only=True)
+    unit_label = serializers.CharField(read_only=True)
 
     class Meta:
         model = Service
         fields = ('id', 'name', 'description', 'base_price_pesewas', 'base_price_display',
-                  'duration_minutes', 'is_active', 'sort_order', 'updated_at')
+                  'price_unit', 'unit_label', 'category', 'duration_minutes', 'is_active', 'sort_order',
+                  'updated_at')
         read_only_fields = ('id', 'updated_at')
         extra_kwargs = {'base_price_pesewas': {'min_value': 1, 'max_value': MAX_PRICE},
                         'duration_minutes': {'min_value': 15, 'max_value': 720}}

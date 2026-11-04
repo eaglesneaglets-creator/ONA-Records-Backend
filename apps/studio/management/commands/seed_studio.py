@@ -23,11 +23,11 @@ from apps.studio.models import Engineer, Room, Service
 # GHS 200/hr for the live room matches the figure used throughout the
 # approved booking-flow design (docs/design/pages/booking-flow.html).
 ROOMS = [
-    dict(name='Studio A — Live Room', hourly_rate_pesewas=20000, capacity=8, sort_order=10,
+    dict(name='Studio A — Live Room', hourly_rate_pesewas=None, capacity=8, sort_order=10,
          description='Full band tracking room with isolation booth. PLACEHOLDER.'),
-    dict(name='Studio B — Vocal Booth', hourly_rate_pesewas=12000, capacity=2, sort_order=20,
+    dict(name='Studio B — Vocal Booth', hourly_rate_pesewas=None, capacity=2, sort_order=20,
          description='Treated vocal and voice-over booth. PLACEHOLDER.'),
-    dict(name='Mix Suite', hourly_rate_pesewas=15000, capacity=3, sort_order=30,
+    dict(name='Mix Suite', hourly_rate_pesewas=None, capacity=3, sort_order=30,
          description='Mixing and mastering suite, no live tracking. PLACEHOLDER.'),
 ]
 
@@ -41,13 +41,13 @@ ENGINEERS = [
 ]
 
 SERVICES = [
-    dict(name='Recording session', base_price_pesewas=20000, duration_minutes=60, sort_order=10,
+    dict(name='Recording session', base_price_pesewas=20000, price_unit='hour', duration_minutes=60, sort_order=10,
          description='Tracking with an engineer. Priced per hour. PLACEHOLDER.'),
-    dict(name='Mixing (per song)', base_price_pesewas=30000, duration_minutes=180, sort_order=20,
+    dict(name='Mixing (per song)', base_price_pesewas=30000, price_unit='song', duration_minutes=180, sort_order=20,
          description='Stems in, finished mix out. PLACEHOLDER.'),
-    dict(name='Mastering (per song)', base_price_pesewas=15000, duration_minutes=60, sort_order=30,
+    dict(name='Mastering (per song)', base_price_pesewas=15000, price_unit='song', duration_minutes=60, sort_order=30,
          description='Final loudness and delivery masters. PLACEHOLDER.'),
-    dict(name='Voice-over / podcast', base_price_pesewas=10000, duration_minutes=60, sort_order=40,
+    dict(name='Voice-over / podcast', base_price_pesewas=10000, price_unit='hour', duration_minutes=60, sort_order=40,
          description='Spoken-word recording and clean-up. PLACEHOLDER.'),
 ]
 

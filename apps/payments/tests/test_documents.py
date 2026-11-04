@@ -35,7 +35,7 @@ def world(django_user_model):
         'admin': U.create_superuser(email='a@x.test', password='p-Ass-1'),
         'room': Room.objects.create(name='Studio A — Live Room', hourly_rate_pesewas=20000),
         'eng': Engineer.objects.create(name='Engineer One'),
-        'svc': Service.objects.create(name='Recording session', base_price_pesewas=1,
+        'svc': Service.objects.create(name='Recording session', base_price_pesewas=0,
                                       duration_minutes=60),
     }
 
@@ -102,7 +102,7 @@ class TestInvoice:
     def test_says_amount_due_until_paid_then_paid(self, world):
         b = booking(world)
         inv = issue_invoice(b)
-        assert 'Amount due' in pdf_text(render_invoice(inv))
+        assert 'deposit' in pdf_text(render_invoice(inv))
         mark_succeeded(open_transaction(b), provider_ref='HUB-1')
         assert 'Paid' in pdf_text(render_invoice(inv))
 

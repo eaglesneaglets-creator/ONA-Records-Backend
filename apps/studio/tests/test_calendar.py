@@ -10,8 +10,11 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from apps.studio.availability import (
-    AVAILABLE, BOOKED, CLOSE_HOUR, HOLIDAY, MAINTENANCE, OPEN_HOUR, availability, is_free,
+    AVAILABLE, BOOKED, HOLIDAY, MAINTENANCE, availability, is_free,
 )
+
+# The hours conftest.py sets for these tests; ONA's 24/7 is test_opening_hours.py.
+OPEN_HOUR, CLOSE_HOUR = 9, 21
 from apps.studio.models import BlockKind, BookingStatus, CalendarBlock, Engineer, Room, Service, StudioBooking
 
 pytestmark = pytest.mark.django_db

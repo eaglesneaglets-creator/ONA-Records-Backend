@@ -15,8 +15,9 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework import serializers
 
-from .availability import CLOSE_HOUR, OPEN_HOUR, STUDIO_TZ, is_free
+from .availability import STUDIO_TZ, always_open, close_hour, is_free, open_hour
 from .models import BookingStatus, Engineer, Package, Room, Service, StudioBooking
+from .pricing import MAX_QUANTITY, PricingError, quote
 
 
 class RoomSerializer(serializers.ModelSerializer):
@@ -56,8 +57,10 @@ class ServiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Service
         fields = ('id', 'name', 'description', 'base_price_pesewas', 'base_price_display',
-                  'duration_minutes')
+                  'price_unit', 'unit_label', 'category', 'duration_minutes')
         read_only_fields = fields
+
+    unit_label = serializers.CharField(read_only=True)
 
 
 class SlotSerializer(serializers.Serializer):
@@ -71,7 +74,9 @@ class SlotSerializer(serializers.Serializer):
 # Bookings
 # ---------------------------------------------------------------------------
 
-MIN_HOURS, MAX_HOURS = 1, CLOSE_HOUR - OPEN_HOUR
+# Longest session a customer books online. A Full Day Studio Pass is 8; staff
+# can book longer from the console.
+MIN_HOURS, MAX_HOURS = 1, 12
 
 # Slot-squatting defence while bookings hold a slot without payment (until
 # Phase 2 adds payment and expiry of stale holds). A customer may hold at
@@ -90,21 +95,32 @@ def check_start(value):
         raise serializers.ValidationError('That time has already passed.')
     if value > timezone.now() + timedelta(days=MAX_DAYS_AHEAD):
         raise serializers.ValidationError(f'Bookings open up to {MAX_DAYS_AHEAD} days ahead.')
-    if not OPEN_HOUR <= local.hour < CLOSE_HOUR:
+    if not open_hour() <= local.hour < close_hour():
         raise serializers.ValidationError(
-            f'The studio is open {OPEN_HOUR:02d}:00 to {CLOSE_HOUR:02d}:00.')
+            f'The studio is open {open_hour():02d}:00 to {close_hour():02d}:00.')
     return value
 
 
 def check_closing(start, hours):
-    """End time for a session, refusing one that runs past closing."""
+    """End time for a session, refusing one that runs past closing.
+    Open 24 hours, a session may run past midnight."""
     end = start + timedelta(hours=hours)
-    closes = start.astimezone(STUDIO_TZ).replace(hour=CLOSE_HOUR, minute=0, second=0,
-                                                  microsecond=0)
+    if always_open():
+        return end
+    midnight = start.astimezone(STUDIO_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    closes = midnight + timedelta(hours=close_hour())
     if end.astimezone(STUDIO_TZ) > closes:
         raise serializers.ValidationError(
-            {'hours': f'That runs past closing time ({CLOSE_HOUR:02d}:00).'})
+            {'hours': f'That runs past closing time ({close_hour():02d}:00).'})
     return end
+
+
+def priced(room, service, hours, quantity):
+    """pricing.quote, with its refusal turned into a field error."""
+    try:
+        return quote(room, service, hours, quantity)
+    except PricingError as exc:
+        raise serializers.ValidationError({exc.field: str(exc)})
 
 
 class BookingSerializer(serializers.ModelSerializer):
@@ -156,6 +172,29 @@ class BookingSerializer(serializers.ModelSerializer):
                 and obj.status in (BookingStatus.PENDING, BookingStatus.CONFIRMED)
                 and obj.end_at > timezone.now() and self.get_outstanding_pesewas(obj) > 0)
 
+    payment_options = serializers.SerializerMethodField()
+    deposit_pesewas = serializers.SerializerMethodField()
+    deposit_display = serializers.SerializerMethodField()
+    # The deposit is in: the booking is the customer's (ONA's terms).
+    secured = serializers.SerializerMethodField()
+
+    def get_payment_options(self, obj) -> list:
+        from apps.payments.checkout import payment_options
+        if not self.get_can_pay_online(obj):
+            return []
+        return [o.as_dict() for o in payment_options(obj)]
+
+    def get_deposit_pesewas(self, obj) -> int:
+        from apps.payments.checkout import deposit_for
+        return deposit_for(obj)
+
+    def get_deposit_display(self, obj) -> str:
+        from apps.payments.money import format_ghs
+        return format_ghs(self.get_deposit_pesewas(obj))
+
+    def get_secured(self, obj) -> bool:
+        return self.get_paid_pesewas(obj) >= self.get_deposit_pesewas(obj) > 0
+
     def get_professional(self, obj) -> dict | None:
         from apps.marketplace.serializers import ProfessionalPublicSerializer
         pro = obj.assigned_professional
@@ -174,11 +213,13 @@ class BookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudioBooking
         fields = ('id', 'reference', 'status', 'room', 'engineer', 'service',
-                  'start_at', 'end_at', 'duration_minutes', 'total_pesewas', 'total_display',
+                  'start_at', 'end_at', 'duration_minutes', 'quantity', 'total_pesewas',
+                  'total_display',
                   'notes', 'created_at', 'can_change', 'has_receipt',
                   'professional', 'professional_fee_pesewas', 'professional_fee_display',
                   'paid_pesewas', 'paid_display', 'outstanding_pesewas', 'outstanding_display',
-                  'can_pay_online')
+                  'can_pay_online', 'payment_options', 'deposit_pesewas', 'deposit_display',
+                  'secured')
         read_only_fields = fields
 
 
@@ -186,10 +227,9 @@ class BookingCreateSerializer(serializers.Serializer):
     """
     POST /studio/bookings/
 
-    PRICE: room hourly rate × hours, frozen onto the booking. The service
-    chosen is what the session is for; its base price is informational in
-    v0.1. The "service fee" line in the approved design is ONA's commission,
-    which is still an open question (spec OQ3) and lands with Phase 2.
+    PRICE: apps/studio/pricing.py — the service's price per hour, day, song
+    or track, plus any room hire — frozen onto the booking. `quantity` is the
+    number of songs/tracks for services priced that way.
 
     Validation gives the customer a sentence. The exclusion constraint gives
     the guarantee — see views.BookingViewSet.create for the race.
@@ -200,6 +240,8 @@ class BookingCreateSerializer(serializers.Serializer):
     service = serializers.PrimaryKeyRelatedField(queryset=Service.objects.active())
     start_at = serializers.DateTimeField()
     hours = serializers.IntegerField(min_value=MIN_HOURS, max_value=MAX_HOURS)
+    quantity = serializers.IntegerField(min_value=1, max_value=MAX_QUANTITY, required=False,
+                                        default=1)
     notes = serializers.CharField(required=False, allow_blank=True, max_length=1000)
 
     def validate_start_at(self, value):
@@ -208,6 +250,7 @@ class BookingCreateSerializer(serializers.Serializer):
     def validate(self, attrs):
         start = attrs['start_at']
         end = check_closing(start, attrs['hours'])
+        q = priced(attrs['room'], attrs['service'], attrs['hours'], attrs['quantity'])
 
         customer = self.context['request'].user
         open_pending = StudioBooking.objects.filter(
@@ -215,8 +258,8 @@ class BookingCreateSerializer(serializers.Serializer):
         ).count()
         if open_pending >= MAX_OPEN_PENDING:
             raise serializers.ValidationError(
-                f'You already have {open_pending} bookings waiting for confirmation. '
-                'ONA will confirm or release them before you can add more.')
+                f'You already have {open_pending} unpaid bookings. Pay the deposit on one, '
+                'or cancel one, before adding more.')
 
         ok, why = is_free(room=attrs['room'], engineer=attrs['engineer'],
                           start_at=start, end_at=end)
@@ -224,7 +267,8 @@ class BookingCreateSerializer(serializers.Serializer):
             raise serializers.ValidationError({'start_at': why})
 
         attrs['end_at'] = end
-        attrs['total_pesewas'] = attrs['room'].hourly_rate_pesewas * attrs['hours']
+        attrs['quantity'] = q.quantity
+        attrs['total_pesewas'] = q.total_pesewas
         return attrs
 
     def create(self, validated):
@@ -242,8 +286,8 @@ class BookingCreateSerializer(serializers.Serializer):
         ).count()
         if open_pending >= MAX_OPEN_PENDING:
             raise serializers.ValidationError(
-                f'You already have {open_pending} bookings waiting for confirmation. '
-                'ONA will confirm or release them before you can add more.')
+                f'You already have {open_pending} unpaid bookings. Pay the deposit on one, '
+                'or cancel one, before adding more.')
         booking = StudioBooking.objects.create(customer=customer, **validated)
         # Same transaction as the booking (the view wraps save() in atomic):
         # every booking has its invoice from the moment it exists.

@@ -39,7 +39,7 @@ def world(django_user_model):
         'room_b': Room.objects.create(name='B', hourly_rate_pesewas=20000),
         'eng': Engineer.objects.create(name='One'),
         'eng_b': Engineer.objects.create(name='Two'),
-        'svc': Service.objects.create(name='Rec', base_price_pesewas=1, duration_minutes=60),
+        'svc': Service.objects.create(name='Rec', base_price_pesewas=0, duration_minutes=60),
     }
 
 

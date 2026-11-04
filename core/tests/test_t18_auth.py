@@ -107,7 +107,7 @@ class TestVerifiedEmailToBook:
         return {
             'data': {'room': str(Room.objects.create(name='A', hourly_rate_pesewas=100).pk),
                      'engineer': str(Engineer.objects.create(name='E').pk),
-                     'service': str(Service.objects.create(name='S', base_price_pesewas=1,
+                     'service': str(Service.objects.create(name='S', base_price_pesewas=0,
                                                            duration_minutes=60).pk),
                      'start_at': start.isoformat(), 'hours': 1},
         }

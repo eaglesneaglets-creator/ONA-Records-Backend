@@ -39,7 +39,7 @@ def world(django_user_model):
             email='kofi@x.test', password='p-Ass-1', role='customer', first_name="Kofi O'Neil"),
         'room': Room.objects.create(name='Studio A — Live Room', hourly_rate_pesewas=20000),
         'eng': Engineer.objects.create(name='Engineer One'),
-        'svc': Service.objects.create(name='Recording session', base_price_pesewas=1,
+        'svc': Service.objects.create(name='Recording session', base_price_pesewas=0,
                                       duration_minutes=60),
     }
 
@@ -123,7 +123,7 @@ class TestBookingEmails:
             mark_succeeded(txn, provider_ref='HUB-1')          # replayed callback
         assert len(mail.outbox) == 1
         msg = mail.outbox[0]
-        assert 'GHS 400.00' in msg.body and 'holds the money' in msg.body
+        assert 'GHS 400.00' in msg.body and 'booking terms' in msg.body
         assert msg.attachments[0][0].startswith('ONA-receipt-RCT-')
 
     def test_a_mail_failure_never_breaks_the_booking(self, world,

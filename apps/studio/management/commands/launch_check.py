@@ -69,9 +69,15 @@ def collect() -> list[tuple[str, str]]:
             == 'production':
         out.append(('BLOCKER', 'PAYSTACK_SECRET_KEY is a TEST key on production - customers would '
                                '"pay" and no money would arrive. Use the sk_live_ key.'))
-    if getattr(settings, 'STUDIO_COMMISSION_PERCENT', 0) == 0:
-        out.append(('WARN', 'STUDIO_COMMISSION_PERCENT is 0 - fine if ONA takes no commission on '
-                            'its own sessions (OQ3); otherwise set it before the first payment.'))
+    # OQ3 answered (Nov 2026): 0% on studio sessions, 10% on marketplace jobs.
+    if getattr(settings, 'STUDIO_COMMISSION_PERCENT', 0) != 0:
+        out.append(('WARN', 'STUDIO_COMMISSION_PERCENT is not 0, but ONA charges no commission '
+                            'on studio sessions.'))
+    for key, what in (('INVOICE_CONTACT', "the studio manager's name, phone and email"),
+                      ('INVOICE_BANK_DETAILS', 'the bank account for transfers'),
+                      ('INVOICE_TIN', "ONA's TIN")):
+        if not getattr(settings, key, ''):
+            out.append(('WARN', f'{key} is empty: invoices leave out {what}.'))
     return out
 
 
