@@ -123,10 +123,23 @@ class StaffBookingSerializer(BookingSerializer):
 class StaffBookingDetailSerializer(StaffBookingSerializer):
     transactions = serializers.SerializerMethodField()
     history = serializers.SerializerMethodField()
+    available_credits = serializers.SerializerMethodField()
 
     class Meta(StaffBookingSerializer.Meta):
-        fields = StaffBookingSerializer.Meta.fields + ('transactions', 'history')
+        fields = StaffBookingSerializer.Meta.fields + ('transactions', 'history',
+                                                       'available_credits')
         read_only_fields = fields
+
+    def get_available_credits(self, obj) -> list:
+        """The customer's unexpired deposit credit — offered only on a booking
+        that can take it (upcoming, holding its slot, something owed)."""
+        from apps.payments.credit import available_credits
+        from apps.payments.manual import outstanding
+        if obj.status not in SLOT_HOLDING_STATUSES or obj.end_at <= timezone.now() \
+                or outstanding(obj) <= 0:
+            return []
+        return [c.as_dict() for c in available_credits(obj.customer)
+                if c.booking_id != str(obj.pk)]
 
     def get_transactions(self, obj) -> list:
         return TransactionStaffSerializer(
@@ -182,6 +195,25 @@ class ManualPaymentSerializer(serializers.Serializer):
 
 class TransitionSerializer(serializers.Serializer):
     reason = serializers.CharField(max_length=500, required=False, allow_blank=True)
+    # Cancel only: ONA's terms — with 48 hours' notice the deposit becomes
+    # credit for a session within 30 days. Staff decide (e.g. not for a no-show).
+    keep_as_credit = serializers.BooleanField(required=False, default=False)
+
+
+class ApplyCreditSerializer(serializers.Serializer):
+    source_booking = serializers.UUIDField()
+
+
+def _credit_fields(name, body, held) -> dict:
+    """On a staff cancel with keep_as_credit, record the credit window the way
+    a customer's own cancellation does (apps/payments/credit.py reads it)."""
+    from datetime import timedelta
+
+    from django.conf import settings
+    if name != 'cancel' or not body.get('keep_as_credit') or held <= 0:
+        return {}
+    until = timezone.localdate() + timedelta(days=settings.DEPOSIT_CREDIT_DAYS)
+    return {'credit_pesewas': held, 'credit_until': until.isoformat()}
 
 
 class StaffBookingViewSet(viewsets.ReadOnlyModelViewSet):
@@ -236,7 +268,8 @@ class StaffBookingViewSet(viewsets.ReadOnlyModelViewSet):
                 # Cancelling a paid booking does not refund it — that is a
                 # separate, deliberate ledger action (Task 16). Record what
                 # was held so the follow-up is visible in the trail.
-                paid_pesewas=paid.paid_pesewas - paid.refunded_pesewas)
+                paid_pesewas=paid.paid_pesewas - paid.refunded_pesewas,
+                **_credit_fields(name, body.validated_data, paid.paid_pesewas - paid.refunded_pesewas))
             notify_booking(booking, rule.notify)
 
         return Response(StaffBookingDetailSerializer(
@@ -297,6 +330,27 @@ class StaffBookingViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(StaffBookingDetailSerializer(
             staff_bookings().get(pk=booking.pk), context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='apply-credit')
+    def apply_credit(self, request, pk=None):
+        """POST /admin/bookings/{id}/apply-credit/ {source_booking} — move a
+        cancelled booking's deposit credit onto this one."""
+        from apps.payments.credit import apply_credit
+        from apps.payments.ledger import LedgerError
+
+        target = self.get_object()
+        body = ApplyCreditSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        source = StudioBooking.objects.filter(pk=body.validated_data['source_booking']).first()
+        if source is None:
+            return Response({'detail': 'That booking does not exist.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        try:
+            apply_credit(source, target, actor=request.user, request=request)
+        except LedgerError as exc:
+            return Response({'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(StaffBookingDetailSerializer(
+            staff_bookings().get(pk=target.pk), context=self.get_serializer_context()).data)
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):

@@ -36,7 +36,9 @@ from core.mixins.timestamp import TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class Provider(models.TextChoices):
-    PAYSTACK = 'paystack', 'Paystack'  # ADR-018: card and Mobile Money online
+    PAYSTACK = 'paystack', 'Paystack'  # ADR-018: Mobile Money online
+    # A cancelled booking's deposit moved to a new one (ONA's terms; credit.py).
+    CREDIT = 'credit', 'Deposit credit'
     # Money ONA received outside the platform and recorded by hand (Task 16).
     MANUAL = 'manual', 'Recorded by ONA staff'
 
@@ -118,6 +120,9 @@ class EntryType(models.TextChoices):
     HOLD = 'hold', 'Held by ONA'
     RELEASE = 'release', 'Released to the payee'
     REFUND = 'refund', 'Refunded to the customer'
+    # Held money moved to another booking of the same customer (deposit
+    # credit). ONA still holds it; the receiving booking holds it now.
+    TRANSFER = 'transfer', 'Moved to another booking'
 
 
 class Beneficiary(models.TextChoices):

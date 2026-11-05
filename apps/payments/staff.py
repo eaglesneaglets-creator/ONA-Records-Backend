@@ -68,6 +68,8 @@ class TransactionStaffSerializer(serializers.ModelSerializer):
     provider_display = serializers.CharField(source='get_provider_display')
     status_display = serializers.CharField(source='get_status_display')
     amount_display = serializers.CharField()
+    fee_display = serializers.SerializerMethodField()
+    charged_display = serializers.SerializerMethodField()
     ledger = LedgerEntrySerializer(source='ledger_entries', many=True)
     held_pesewas = serializers.SerializerMethodField()
     held_display = serializers.SerializerMethodField()
@@ -79,7 +81,8 @@ class TransactionStaffSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = ('id', 'booking', 'customer', 'provider', 'provider_display', 'provider_ref',
                   'is_manual', 'method', 'method_display',
-                  'amount_pesewas', 'amount_display', 'fee_pesewas', 'status', 'status_display',
+                  'amount_pesewas', 'amount_display', 'fee_pesewas', 'fee_display',
+                  'charged_display', 'status', 'status_display',
                   'failure_reason', 'commission_percent', 'held_pesewas', 'held_display',
                   'commission_pesewas',
                   'created_at', 'ledger')
@@ -94,8 +97,18 @@ class TransactionStaffSerializer(serializers.ModelSerializer):
 
     # Both totals are read from the prefetched entries: no query per row.
     def get_held_pesewas(self, obj) -> int:
-        sign = {EntryType.HOLD: 1, EntryType.RELEASE: -1, EntryType.REFUND: -1}
+        sign = {EntryType.HOLD: 1, EntryType.RELEASE: -1, EntryType.REFUND: -1,
+                EntryType.TRANSFER: -1}
         return sum(sign[e.entry_type] * e.amount_pesewas for e in obj.ledger_entries.all())
+
+    # Paystack's processing fee is charged on top and kept by Paystack (ADR-018):
+    # shown so staff can match the customer's MoMo debit and Paystack's
+    # settlement, never added to what ONA holds.
+    def get_fee_display(self, obj) -> str:
+        return format_ghs(obj.fee_pesewas) if obj.fee_pesewas else ''
+
+    def get_charged_display(self, obj) -> str:
+        return format_ghs(obj.amount_pesewas + obj.fee_pesewas)
 
     def get_is_manual(self, obj) -> bool:
         return obj.provider == Provider.MANUAL

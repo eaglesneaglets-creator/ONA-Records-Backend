@@ -25,8 +25,10 @@ def with_paid(qs):
     from apps.payments.models import EntryType, LedgerEntry, Transaction, TransactionStatus
 
     paid = Transaction.objects.filter(booking=OuterRef('pk'), status=TransactionStatus.SUCCEEDED)
+    # Moved to another booking as deposit credit counts like a refund here:
+    # it is no longer held for THIS booking.
     refunded = LedgerEntry.objects.filter(transaction__booking=OuterRef('pk'),
-                                          entry_type=EntryType.REFUND)
+                                          entry_type__in=[EntryType.REFUND, EntryType.TRANSFER])
     return qs.annotate(paid_pesewas=_sum(paid), refunded_pesewas=_sum(refunded))
 
 
@@ -37,6 +39,7 @@ def net_paid(booking) -> int:
     from apps.payments.models import EntryType, LedgerEntry, Transaction, TransactionStatus
     paid = (Transaction.objects.filter(booking=booking, status=TransactionStatus.SUCCEEDED)
             .aggregate(t=Sum('amount_pesewas'))['t'] or 0)
-    refunded = (LedgerEntry.objects.filter(transaction__booking=booking, entry_type=EntryType.REFUND)
+    refunded = (LedgerEntry.objects.filter(transaction__booking=booking,
+                                           entry_type__in=[EntryType.REFUND, EntryType.TRANSFER])
                 .aggregate(t=Sum('amount_pesewas'))['t'] or 0)
     return paid - refunded

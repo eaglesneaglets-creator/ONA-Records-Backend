@@ -150,6 +150,8 @@ class LogoutView(GenericAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         token = serializer.validated_data['refresh']
+        from .refresh_grace import forget
+        forget(token)  # the D8 reuse grace ends with the session
         try:
             RefreshToken(token).blacklist()
         except Exception:

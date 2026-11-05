@@ -37,7 +37,7 @@ def outstanding(booking) -> int:
     paid = (Transaction.objects.filter(booking=booking, status=TransactionStatus.SUCCEEDED)
             .aggregate(t=Sum('amount_pesewas'))['t'] or 0)
     refunded = (LedgerEntry.objects.filter(transaction__booking=booking,
-                                           entry_type=EntryType.REFUND)
+                                           entry_type__in=[EntryType.REFUND, EntryType.TRANSFER])
                 .aggregate(t=Sum('amount_pesewas'))['t'] or 0)
     return booking.total_pesewas - paid + refunded
 

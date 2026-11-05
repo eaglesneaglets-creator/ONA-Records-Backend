@@ -60,7 +60,7 @@ def _totals(txn: Transaction) -> dict[str, int]:
 def balance(txn: Transaction) -> int:
     """Pesewas ONA still holds for this transaction."""
     t = _totals(txn)
-    return t[EntryType.HOLD] - t[EntryType.RELEASE] - t[EntryType.REFUND]
+    return t[EntryType.HOLD] - t[EntryType.RELEASE] - t[EntryType.REFUND] - t[EntryType.TRANSFER]
 
 
 def _locked(txn: Transaction) -> Transaction:

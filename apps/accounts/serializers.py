@@ -16,7 +16,7 @@ from django.db import IntegrityError, transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
-from rest_framework_simplejwt.exceptions import InvalidToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
@@ -143,28 +143,28 @@ class RoleAwareTokenRefreshSerializer(TokenRefreshSerializer):
     """
 
     def validate(self, attrs):
+        from . import refresh_grace
+
         # Read the user id BEFORE super().validate(). With
         # ROTATE_REFRESH_TOKENS and BLACKLIST_AFTER_ROTATION both on, the
         # parent blacklists the incoming token — so constructing a
         # RefreshToken from it afterwards raises "token is blacklisted" and
         # every refresh 401s. Decoding first avoids touching it twice.
-        incoming = RefreshToken(attrs['refresh'])
-        user_id = incoming.get('user_id')
+        try:
+            incoming = RefreshToken(attrs['refresh'])
+        except TokenError:
+            # Blacklisted moments ago by a rotation whose answer never reached
+            # the browser (a reload mid-refresh, D8): hand back that answer.
+            again = refresh_grace.replay(attrs['refresh'])
+            if again is None:
+                raise
+            remembered, payload = again
+            self._check_user(payload)
+            return remembered
 
-        # A password change must end every session. simplejwt's
-        # CHECK_REVOKE_TOKEN only checks ACCESS tokens at authentication, so
-        # a refresh token minted before the change would otherwise keep
-        # producing valid access tokens — each stamped with the NEW hash.
-        # Checked before super().validate() so a dead token is not rotated.
-        user = User.objects.filter(pk=user_id).first()
-        if user is None:
-            raise InvalidToken('This session is no longer valid.')
-        claim = api_settings.REVOKE_TOKEN_CLAIM
-        if api_settings.CHECK_REVOKE_TOKEN and incoming.get(claim) != get_md5_hash_password(
-                user.password):
-            raise InvalidToken('Your password was changed. Please sign in again.')
-
+        self._check_user(incoming)
         data = super().validate(attrs)
+        user = User.objects.get(pk=incoming.get('user_id'))
 
         access = AccessToken(data['access'])
         access['role'] = user.role
@@ -172,7 +172,24 @@ class RoleAwareTokenRefreshSerializer(TokenRefreshSerializer):
         access['is_approved'] = user.is_approved
         data['access'] = str(access)
 
+        refresh_grace.remember(incoming['jti'], data)
         return data
+
+    @staticmethod
+    def _check_user(token) -> None:
+        # A password change must end every session. simplejwt's
+        # CHECK_REVOKE_TOKEN only checks ACCESS tokens at authentication, so
+        # a refresh token minted before the change would otherwise keep
+        # producing valid access tokens — each stamped with the NEW hash.
+        # Checked before rotating so a dead token is not rotated — and on the
+        # D8 replay path too, so a grace replay never outlives a password change.
+        user = User.objects.filter(pk=token.get('user_id')).first()
+        if user is None or not user.is_active:
+            raise InvalidToken('This session is no longer valid.')
+        claim = api_settings.REVOKE_TOKEN_CLAIM
+        if api_settings.CHECK_REVOKE_TOKEN and token.get(claim) != get_md5_hash_password(
+                user.password):
+            raise InvalidToken('Your password was changed. Please sign in again.')
 
 
 class UserSerializer(MaskedUserSerializer):
