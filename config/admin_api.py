@@ -20,7 +20,7 @@ from apps.studio.catalogue_admin import (
     RoomAdminViewSet,
     ServiceAdminViewSet,
 )
-from apps.studio.staff import StaffBookingViewSet, StaffOverviewView
+from apps.studio.staff import StaffBookingViewSet, StaffOverviewView, StaffSetupView
 
 app_name = 'adminapi'
 
@@ -40,5 +40,6 @@ router.register('faqs', FaqAdminViewSet, basename='faq')
 
 urlpatterns = [
     path('overview/', StaffOverviewView.as_view(), name='overview'),
+    path('setup/', StaffSetupView.as_view(), name='setup'),
     *router.urls,
 ]

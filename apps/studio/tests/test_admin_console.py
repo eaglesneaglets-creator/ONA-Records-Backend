@@ -96,7 +96,8 @@ class TestBookings:
         row = staff.get(u('booking-list')).data['results'][0]
         assert row['reference'] == b.reference
         assert row['customer'] == {'id': str(world['ama'].pk), 'public_ref': world['ama'].public_ref,
-                                   'name': 'Ama Owusu', 'email': 'ama@x.test', 'phone': '0244000000'}
+                                   'name': 'Ama Owusu', 'email': 'ama@x.test', 'phone': '0244000000',
+                                   'intent_display': ''}
         assert row['paid_pesewas'] == 0 and row['paid_display'] == 'GHS 0.00'
         assert row['allowed_actions'] == ['confirm', 'cancel']
 

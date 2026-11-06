@@ -268,3 +268,26 @@ class PasswordResetConfirmView(GenericAPIView):
         # because Django's generator hashes the password into it. That is why
         # a reset link is single-use without any extra bookkeeping.
         return Response({'detail': 'Password updated. You can sign in now.'})
+
+
+class JourneyView(GenericAPIView):
+    """
+    GET  /auth/journey/   the customer's "Get started" guide
+    POST /auth/journey/   {hidden?, intent?, welcomed?, tour_seen?} — what the
+                          guide, the welcome flow or a tour reports back
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .journey import customer_journey
+        return Response(customer_journey(request.user))
+
+    def post(self, request):
+        from .journey import customer_journey, update
+        data = {k: request.data[k] for k in ('hidden', 'intent', 'welcomed', 'tour_seen')
+                if k in request.data}
+        if 'hidden' in data:
+            data['hidden'] = bool(data['hidden'])
+        update(request.user, data)
+        return Response(customer_journey(request.user))

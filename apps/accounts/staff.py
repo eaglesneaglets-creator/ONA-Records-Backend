@@ -27,13 +27,42 @@ class CustomerStaffSerializer(serializers.ModelSerializer):
     last_session_at = serializers.DateTimeField(read_only=True)
     paid_pesewas = serializers.IntegerField(read_only=True)
     paid_display = serializers.SerializerMethodField()
+    # The customer journey, as staff see it (apps/accounts/journey.py).
+    is_new = serializers.SerializerMethodField()
+    stage = serializers.SerializerMethodField()
+    stage_display = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = ('id', 'public_ref', 'name', 'first_name', 'last_name', 'email', 'phone',
                   'is_active', 'is_email_verified', 'date_joined', 'booking_count',
-                  'upcoming_count', 'last_session_at', 'paid_pesewas', 'paid_display')
+                  'upcoming_count', 'last_session_at', 'paid_pesewas', 'paid_display',
+                  'is_new', 'stage', 'stage_display', 'intent', 'intent_display')
         read_only_fields = fields
+
+    intent_display = serializers.SerializerMethodField()
+
+    def get_intent_display(self, obj) -> str:
+        from .journey import INTENTS
+        return INTENTS.get(obj.intent, '')
+
+    def get_is_new(self, obj) -> bool:
+        from .journey import is_new
+        return is_new(obj)
+
+    def get_stage(self, obj) -> str:
+        # From the list annotations — no query per row.
+        if getattr(obj, 'came_in', 0):
+            return 'came_in'
+        if obj.paid_pesewas > 0:
+            return 'paid'
+        if obj.booking_count:
+            return 'booked'
+        return 'signed_up'
+
+    def get_stage_display(self, obj) -> str:
+        from .journey import STAGES
+        return STAGES[self.get_stage(obj)]
 
     def get_name(self, obj) -> str:
         return obj.full_name or obj.email
@@ -67,6 +96,10 @@ class CustomerStaffViewSet(viewsets.ReadOnlyModelViewSet):
                         studio_bookings__status__in=('pending', 'confirmed'),
                         studio_bookings__end_at__gt=timezone.now())),
                     last_session_at=Max('studio_bookings__start_at', filter=live),
+                    came_in=Count('studio_bookings', filter=live & (
+                        Q(studio_bookings__status='completed')
+                        | Q(studio_bookings__status='confirmed',
+                            studio_bookings__end_at__lte=timezone.now()))),
                     paid_pesewas=Coalesce(Subquery(paid, output_field=IntegerField()), Value(0))
                     - Coalesce(Subquery(refunded, output_field=IntegerField()), Value(0)),
                 ))

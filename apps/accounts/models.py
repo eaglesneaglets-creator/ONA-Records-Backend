@@ -72,6 +72,13 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     email = models.EmailField(unique=True, db_index=True)
     phone = models.CharField(max_length=20, blank=True)
+    # The customer hid their "Get started" guide (apps/accounts/journey.py).
+    journey_dismissed_at = models.DateTimeField(null=True, blank=True)
+    # "What brings you to ONA?" from the welcome flow — tailors what they are
+    # shown first, and tells staff what a new customer came for.
+    intent = models.CharField(max_length=16, blank=True)
+    # First-run state: {"welcomed_at": iso, "tours": ["booking", ...]}.
+    onboarding = models.JSONField(default=dict, blank=True)
 
     first_name = models.CharField(max_length=80, blank=True)
     last_name = models.CharField(max_length=80, blank=True)
