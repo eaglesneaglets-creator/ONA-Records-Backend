@@ -12,9 +12,13 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
+from django.db import IntegrityError, transaction
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenRefreshSerializer
 from rest_framework_simplejwt.tokens import AccessToken, RefreshToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from rest_framework_simplejwt.settings import api_settings
+from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from core.serializers import MaskedUserSerializer
 
@@ -83,7 +87,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         )
         user.public_ref = (last or 0) + 1
 
-        user.save()
+        # The duplicate-email check in validate() is read-then-write; two
+        # simultaneous submits both pass it and the unique index refuses the
+        # second. Answer that the same way validation would, not with a 500.
+        try:
+            with transaction.atomic():
+                user.save()
+        except IntegrityError:
+            raise serializers.ValidationError(
+                {'email': 'An account with this email already exists.'})
         return user
 
 
@@ -131,18 +143,28 @@ class RoleAwareTokenRefreshSerializer(TokenRefreshSerializer):
     """
 
     def validate(self, attrs):
+        from . import refresh_grace
+
         # Read the user id BEFORE super().validate(). With
         # ROTATE_REFRESH_TOKENS and BLACKLIST_AFTER_ROTATION both on, the
         # parent blacklists the incoming token — so constructing a
         # RefreshToken from it afterwards raises "token is blacklisted" and
         # every refresh 401s. Decoding first avoids touching it twice.
-        user_id = RefreshToken(attrs['refresh']).get('user_id')
+        try:
+            incoming = RefreshToken(attrs['refresh'])
+        except TokenError:
+            # Blacklisted moments ago by a rotation whose answer never reached
+            # the browser (a reload mid-refresh, D8): hand back that answer.
+            again = refresh_grace.replay(attrs['refresh'])
+            if again is None:
+                raise
+            remembered, payload = again
+            self._check_user(payload)
+            return remembered
 
+        self._check_user(incoming)
         data = super().validate(attrs)
-
-        user = User.objects.filter(pk=user_id).first()
-        if user is None:
-            raise serializers.ValidationError('This session is no longer valid.')
+        user = User.objects.get(pk=incoming.get('user_id'))
 
         access = AccessToken(data['access'])
         access['role'] = user.role
@@ -150,7 +172,24 @@ class RoleAwareTokenRefreshSerializer(TokenRefreshSerializer):
         access['is_approved'] = user.is_approved
         data['access'] = str(access)
 
+        refresh_grace.remember(incoming['jti'], data)
         return data
+
+    @staticmethod
+    def _check_user(token) -> None:
+        # A password change must end every session. simplejwt's
+        # CHECK_REVOKE_TOKEN only checks ACCESS tokens at authentication, so
+        # a refresh token minted before the change would otherwise keep
+        # producing valid access tokens — each stamped with the NEW hash.
+        # Checked before rotating so a dead token is not rotated — and on the
+        # D8 replay path too, so a grace replay never outlives a password change.
+        user = User.objects.filter(pk=token.get('user_id')).first()
+        if user is None or not user.is_active:
+            raise InvalidToken('This session is no longer valid.')
+        claim = api_settings.REVOKE_TOKEN_CLAIM
+        if api_settings.CHECK_REVOKE_TOKEN and token.get(claim) != get_md5_hash_password(
+                user.password):
+            raise InvalidToken('Your password was changed. Please sign in again.')
 
 
 class UserSerializer(MaskedUserSerializer):
@@ -162,14 +201,24 @@ class UserSerializer(MaskedUserSerializer):
     class recognises self-access and unmasks automatically.
     """
 
+    # True when this customer may not book until they confirm their email
+    # (settings.BOOKING_REQUIRES_VERIFIED_EMAIL) — the booking page shows a
+    # resend banner only when it is.
+    must_verify_email = serializers.SerializerMethodField()
+
     class Meta(MaskedUserSerializer.Meta):
         model = User
         fields = MaskedUserSerializer.Meta.fields + (
             'email', 'first_name', 'last_name', 'phone',
-            'public_ref', 'is_email_verified', 'date_joined',
+            'public_ref', 'is_email_verified', 'date_joined', 'must_verify_email',
         )
         read_only_fields = ('id', 'display_name', 'role', 'email',
                             'public_ref', 'is_email_verified', 'date_joined')
+
+    def get_must_verify_email(self, obj) -> bool:
+        from django.conf import settings
+        return bool(getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True)
+                    and obj.role == 'customer' and not obj.is_email_verified)
 
 
 class PublicUserSerializer(MaskedUserSerializer):

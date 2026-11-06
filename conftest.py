@@ -29,3 +29,13 @@ def reset_throttles():
     cache.clear()
     yield
     cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def studio_hours(settings):
+    """
+    Most tests were written against 09:00–21:00 opening hours, and closing
+    time is what several of them are about. ONA's real hours (24/7, the
+    settings default) are tested explicitly in test_opening_hours.py.
+    """
+    settings.STUDIO_OPEN_HOUR, settings.STUDIO_CLOSE_HOUR = 9, 21

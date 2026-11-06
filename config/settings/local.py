@@ -5,10 +5,15 @@ Run with: DJANGO_SETTINGS_MODULE=config.settings.local
 """
 
 from .base import *  # noqa: F401,F403
-from decouple import config
+from decouple import Csv, config
 import dj_database_url
 
 DEBUG = True
+
+# Reported by /api/v1/health/. Without this the local server answers
+# 'production', which defeats the point of that endpoint naming the
+# environment at all.
+ENVIRONMENT_NAME = 'local'
 
 # WhiteNoise is a production static-file server. Keeping it in local/test
 # middleware adds no coverage and warns on every request before collectstatic
@@ -20,7 +25,10 @@ MIDDLEWARE = [  # noqa: F405
 
 SECRET_KEY = config('DJANGO_SECRET_KEY', default='insecure-local-key-do-not-deploy')
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]', 'testserver']
+# Overridable so the API can run in a container and be reached by its
+# service name (docker-compose.preview.yml calls it `api`).
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', cast=Csv(),
+                       default='localhost,127.0.0.1,[::1],testserver')
 
 # Postgres is required even locally. The no-double-booking rule uses an
 # EXCLUDE constraint with btree_gist, which SQLite cannot express — so a
@@ -43,8 +51,23 @@ EMAIL_BACKEND = config(
 )
 DEFAULT_FROM_EMAIL = 'ONA Records <dev@localhost>'
 
+# Off locally: E2E registers and books in one go, and there is no inbox to
+# click a link from. Staging and production keep the base default (on);
+# pytest switches it on where it is the thing under test.
+BOOKING_REQUIRES_VERIFIED_EMAIL = config('BOOKING_REQUIRES_VERIFIED_EMAIL', default=False, cast=bool)
+
 # Run tasks inline — no Redis or worker needed to develop.
 CELERY_TASK_ALWAYS_EAGER = True
 CELERY_TASK_EAGER_PROPAGATES = True
 
 LOGGING['root']['level'] = 'DEBUG'  # noqa: F405
+
+# E2E and manual testing register and log in far more often than a real
+# visitor. 30/hour (the production anon rate) is exhausted by two Playwright
+# runs. Local only — staging and production keep the real limits.
+REST_FRAMEWORK = {
+    **REST_FRAMEWORK,
+    'DEFAULT_THROTTLE_RATES': {'anon': '2000/hour', 'user': '5000/hour',
+                               'public': '20000/hour', 'booking': '2000/hour',
+                               'payment': '2000/hour'},
+}
