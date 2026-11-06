@@ -614,3 +614,20 @@ class TestFortyEightHours:
         assert res.status_code == 200
         meta = AuditLog.objects.get(action='booking.cancelled').metadata
         assert meta['credit_pesewas'] == 20000 and meta['credit_until']
+
+
+def test_a_wrong_amount_is_flagged_once_and_left_out_of_the_sweep(booking):
+    # Walkthrough 2026-11-06: the sweep re-verified and re-audited it every
+    # 10 minutes for a week.
+    ref, _ = start(booking)
+    txn = Transaction.objects.get(provider_ref=ref)
+    with mock.patch.object(paystack, 'verify', return_value=paid(txn, amount=1)):
+        checkout.settle(ref)
+        checkout.settle(ref)
+    txn.refresh_from_db()
+    assert txn.status == TransactionStatus.PENDING and txn.failure_reason == checkout.MISMATCH
+    assert AuditLog.objects.filter(action='payment.amount_mismatch').count() == 1
+    Transaction.objects.filter(pk=txn.pk).update(created_at=timezone.now() - timedelta(minutes=30))
+    with mock.patch.object(paystack, 'verify') as verify:
+        assert checkout.reconcile_pending()['checked'] == 0
+    verify.assert_not_called()

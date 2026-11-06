@@ -130,3 +130,8 @@ if SENTRY_DSN:
         traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float),
         send_default_pii=False,  # this platform holds personal and payment data
     )
+
+# Payments must only ever talk to Paystack over TLS (PAYSTACK_API_BASE is a
+# local-simulation hook, never a production knob).
+if not PAYSTACK_API_BASE.startswith('https://'):  # noqa: F405
+    raise ImproperlyConfigured('PAYSTACK_API_BASE must be https in production.')  # noqa: F405

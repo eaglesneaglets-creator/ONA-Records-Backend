@@ -33,7 +33,11 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-API = 'https://api.paystack.co'
+
+def _api() -> str:
+    # Settings, so a local simulation can point at a fake Paystack
+    # (PAYSTACK_API_BASE). Production refuses anything but https (production.py).
+    return settings.PAYSTACK_API_BASE.rstrip('/')
 
 
 class PaystackError(Exception):
@@ -84,7 +88,7 @@ def initialize(reference: str, amount_pesewas: int, email: str, callback_url: st
         payload['channels'] = list(channels)
     logger.info('Paystack initialize: ref=%s amount_pesewas=%d', reference, amount_pesewas)
     try:
-        resp = requests.post(f'{API}/transaction/initialize', json=payload,
+        resp = requests.post(f'{_api()}/transaction/initialize', json=payload,
                              headers=_headers(), timeout=20)
     except requests.RequestException as exc:
         logger.error('Paystack initialize network error: ref=%s err=%s', reference, exc)
@@ -107,7 +111,7 @@ def verify(reference: str) -> dict:
     Note `body.status` is whether the API CALL worked, not the payment.
     """
     try:
-        resp = requests.get(f'{API}/transaction/verify/{requests.utils.quote(reference, safe="")}',
+        resp = requests.get(f'{_api()}/transaction/verify/{requests.utils.quote(reference, safe="")}',
                             headers=_headers(), timeout=15)
     except requests.RequestException as exc:
         logger.error('Paystack verify network error: ref=%s err=%s', reference, exc)

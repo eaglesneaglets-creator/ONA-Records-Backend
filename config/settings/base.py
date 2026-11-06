@@ -208,6 +208,9 @@ PAYSTACK_SECRET_KEY = config('PAYSTACK_SECRET_KEY', default='')
 # Where Paystack sends the customer back. Defaults to the frontend's return
 # page; set only to override.
 PAYSTACK_CALLBACK_URL = config('PAYSTACK_CALLBACK_URL', default='')
+# Paystack's API. Only ever changed to run a local end-to-end simulation
+# against a fake Paystack; production.py refuses anything but https.
+PAYSTACK_API_BASE = config('PAYSTACK_API_BASE', default='https://api.paystack.co')
 # Channels offered on Paystack's checkout. ONA accepts Mobile Money (and bank
 # transfer); card is off. Paystack shows only channels the account has enabled.
 PAYSTACK_CHANNELS = [c for c in config('PAYSTACK_CHANNELS', cast=Csv(),

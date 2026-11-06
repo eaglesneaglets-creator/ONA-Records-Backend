@@ -62,6 +62,9 @@ IN_FLIGHT = {'abandoned', 'ongoing', 'pending', 'processing', 'queued'}
 SWEEP_GRACE = timedelta(minutes=5)
 ABANDON_AFTER = timedelta(hours=2)
 SWEEP_HORIZON = timedelta(days=7)
+# On a pending payment Paystack confirmed for a different amount: a person
+# decides (docs/runbook.md §4). The sweep leaves these alone.
+MISMATCH = 'Amount does not match — check Paystack before recording anything'
 # An unpaid booking whose customer is on Paystack's page right now is not
 # released under them; their checkout gets this long.
 CHECKOUT_GRACE = timedelta(minutes=20)
@@ -213,12 +216,16 @@ def apply_result(txn: Transaction, data: dict) -> Transaction:
         amount, currency = data.get('amount'), data.get('currency')
         expected = txn.amount_pesewas + txn.fee_pesewas
         if type(amount) is not int or amount != expected or currency != 'GHS':
-            logger.error('Paystack amount mismatch: ref=%s expected=%s got=%r %r',
-                         txn.provider_ref, expected, amount, currency)
-            AuditLog.record('payment.amount_mismatch', target=booking,
-                            reference=booking.reference, provider_ref=txn.provider_ref,
-                            expected_pesewas=expected, received=amount, currency=currency)
-            return txn
+            if txn.failure_reason != MISMATCH:
+                logger.error('Paystack amount mismatch: ref=%s expected=%s got=%r %r',
+                             txn.provider_ref, expected, amount, currency)
+                AuditLog.record('payment.amount_mismatch', target=booking,
+                                reference=booking.reference, provider_ref=txn.provider_ref,
+                                expected_pesewas=expected, received=amount, currency=currency)
+                # Still pending — money may have moved — but marked, so staff
+                # see it and the sweep stops asking.
+                Transaction.objects.filter(pk=txn.pk).update(failure_reason=MISMATCH)
+            return Transaction.objects.get(pk=txn.pk)
         channel = str(data.get('channel') or '')[:40]
         was_failed = txn.status == TransactionStatus.FAILED
         mark_succeeded(txn, note=f'Paystack {channel}'.strip(), provider_verified=True)
@@ -296,6 +303,7 @@ def reconcile_pending(now=None) -> dict:
     pending = (Transaction.objects
                .filter(provider=Provider.PAYSTACK, status=TransactionStatus.PENDING,
                        created_at__lt=now - SWEEP_GRACE, created_at__gt=now - SWEEP_HORIZON)
+               .exclude(failure_reason=MISMATCH)
                .order_by('created_at')[:200])
     for txn in pending:
         counts['checked'] += 1
