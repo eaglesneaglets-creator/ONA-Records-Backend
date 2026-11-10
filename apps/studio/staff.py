@@ -297,7 +297,7 @@ class StaffBookingViewSet(viewsets.ReadOnlyModelViewSet):
                 raise
             which = 'engineer' if name.endswith('_engineer_overlap') else 'room'
             raise SlotTaken(f'That {which} was booked by someone else just now. '
-                            'Please pick another time.')
+                            'Please pick another time.') from exc
         return Response(StaffBookingDetailSerializer(
             staff_bookings().get(pk=booking.pk), context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED)

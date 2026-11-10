@@ -272,7 +272,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
                 raise
             which = 'engineer' if name.endswith('_engineer_overlap') else 'room'
             raise SlotTaken(f'That {which} was booked by someone else just now. '
-                            'Please pick another time.')
+                            'Please pick another time.') from exc
         AuditLog.record('booking.rescheduled', actor=request.user, target=booking,
                         request=request, reference=booking.reference,
                         from_start=old_start.isoformat(), to_start=booking.start_at.isoformat())
@@ -295,7 +295,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
                 raise
             which = 'engineer' if name.endswith('_engineer_overlap') else 'room'
             raise SlotTaken(f'That {which} was booked by someone else just now. '
-                            'Please pick another time.')
+                            'Please pick another time.') from exc
         notify_booking(booking, Kind.BOOKING_RECEIVED)
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data,
                         status=status.HTTP_201_CREATED)

@@ -402,3 +402,4 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
                     self.reference = generate_reference()
                     continue
                 raise
+        return None  # unreachable: the fifth attempt returns or raises

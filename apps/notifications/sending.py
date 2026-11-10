@@ -35,7 +35,7 @@ def claim(kind: str, recipient: str, *, dedupe_key: str | None = None,
     Reserve the right to send. Returns None if this notification has already
     gone (or is going) out — the caller must then do nothing.
     """
-    defaults = dict(kind=kind, recipient=recipient, booking=booking, channel=Channel.EMAIL)
+    defaults = {'kind': kind, 'recipient': recipient, 'booking': booking, 'channel': Channel.EMAIL}
     if dedupe_key is None:
         return NotificationLog.objects.create(**defaults)
     try:

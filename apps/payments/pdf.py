@@ -220,7 +220,7 @@ def _payment_block(c: Canvas, y: float) -> float:
     for i, text in enumerate(lines):
         c.setFont('Helvetica-Bold' if i == 0 else 'Helvetica', 8.5 if i == 0 else 9)
         c.setFillColor(DIM if i == 0 else INK)
-        for j, part in enumerate(_wrap(text, 'Helvetica', 9, RIGHT - LEFT)):
+        for part in _wrap(text, 'Helvetica', 9, RIGHT - LEFT):
             c.drawString(LEFT, y, part)
             y -= 5 * mm
     return y

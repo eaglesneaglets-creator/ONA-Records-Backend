@@ -20,7 +20,7 @@ from apps.payments.ledger import (
     LedgerError, balance, mark_failed, mark_succeeded, open_transaction, refund, release,
 )
 from apps.payments.models import (
-    Beneficiary, Commission, EntryType, LedgerEntry, Provider, Transaction, TransactionStatus,
+    Beneficiary, Commission, EntryType, LedgerEntry, Provider, TransactionStatus,
 )
 from apps.studio.models import Engineer, Room, Service, StudioBooking
 

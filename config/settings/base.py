@@ -178,16 +178,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Amounts are stored as INTEGER PESEWAS everywhere. GHS 12.50 is 1250.
 # Never float, never Decimal in the database: floats lose cents, and mixing
 # Decimal with integer arithmetic is how rounding bugs reach a ledger.
-CURRENCY = 'GHS'
-CURRENCY_MINOR_UNITS = 100
-
-# Default for NEW transaction rows only. The rate that applied is stored on
-# each row, so changing this must never alter what a past payment was worth.
-DEFAULT_COMMISSION_PERCENT = config('DEFAULT_COMMISSION_PERCENT', default=15, cast=int)
-
-# Flat studio booking fee, in pesewas.
-BOOKING_FEE_PESEWAS = config('BOOKING_FEE_PESEWAS', default=4800, cast=int)
-
 FREE_CANCELLATION_HOURS = config('FREE_CANCELLATION_HOURS', default=48, cast=int)
 
 # Opening hours, studio time (Africa/Accra). ONA: "24/7, by prior booking

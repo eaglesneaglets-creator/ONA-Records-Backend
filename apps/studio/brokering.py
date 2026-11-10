@@ -127,7 +127,7 @@ class StaffBookingCreateSerializer(serializers.Serializer):
         try:
             q = quote(attrs['room'], attrs['service'], attrs['hours'], attrs['quantity'])
         except PricingError as exc:
-            raise serializers.ValidationError({exc.field: str(exc)})
+            raise serializers.ValidationError({exc.field: str(exc)}) from exc
         attrs['quantity'] = q.quantity
         attrs['total_pesewas'] = q.total_pesewas + fee
         return attrs

@@ -92,7 +92,7 @@ def initialize(reference: str, amount_pesewas: int, email: str, callback_url: st
                              headers=_headers(), timeout=20)
     except requests.RequestException as exc:
         logger.error('Paystack initialize network error: ref=%s err=%s', reference, exc)
-        raise PaystackError('Could not reach the payment provider. Please try again.')
+        raise PaystackError('Could not reach the payment provider. Please try again.') from exc
     body = _json(resp)
     if resp.status_code >= 400 or not body.get('status'):
         logger.error('Paystack initialize refused: ref=%s status=%s message=%s',
@@ -115,7 +115,7 @@ def verify(reference: str) -> dict:
                             headers=_headers(), timeout=15)
     except requests.RequestException as exc:
         logger.error('Paystack verify network error: ref=%s err=%s', reference, exc)
-        raise PaystackError('Could not reach the payment provider.')
+        raise PaystackError('Could not reach the payment provider.') from exc
     body = _json(resp)
     if resp.status_code >= 400 or not body.get('status') or not isinstance(body.get('data'), dict):
         logger.error('Paystack verify refused: ref=%s status=%s message=%s',

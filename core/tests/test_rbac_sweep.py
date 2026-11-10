@@ -43,8 +43,7 @@ def _routes():
 
     seen = set()
     for raw in walk(get_resolver().url_patterns):
-        if not raw.startswith('api/') or 'format' in raw or raw.startswith('api/v1/schema') \
-                or raw.startswith('api/v1/docs'):
+        if not raw.startswith('api/') or 'format' in raw or raw.startswith(('api/v1/schema', 'api/v1/docs')):
             continue
         path = raw.replace('^', '').replace('$', '')
         path = re.sub(r'\(\?P<\w+>[^)]+\)', str(uuid.uuid4()), path)

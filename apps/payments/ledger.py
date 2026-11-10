@@ -51,7 +51,7 @@ def studio_commission_percent() -> int:
 def _totals(txn: Transaction) -> dict[str, int]:
     rows = (LedgerEntry.objects.filter(transaction=txn)
             .values('entry_type').annotate(total=Sum('amount_pesewas')))
-    totals = {t: 0 for t in EntryType.values}
+    totals = dict.fromkeys(EntryType.values, 0)
     for r in rows:
         totals[r['entry_type']] = r['total']
     return totals

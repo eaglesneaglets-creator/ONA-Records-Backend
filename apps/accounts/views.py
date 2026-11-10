@@ -7,16 +7,15 @@ tied to the user's password hash and last_login, so a token stops working the
 moment the password changes.
 """
 
+import contextlib
 import logging
 
 from django.contrib.auth import get_user_model
-from django.contrib.auth.tokens import default_token_generator
 
 from apps.notifications.dispatch import notify_account
 from apps.notifications.models import Kind
 
 from .tokens import email_verification_token
-from django.conf import settings
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.utils import timezone
@@ -152,12 +151,10 @@ class LogoutView(GenericAPIView):
         token = serializer.validated_data['refresh']
         from .refresh_grace import forget
         forget(token)  # the D8 reuse grace ends with the session
-        try:
+        # An invalid or already-blacklisted token is not an error worth
+        # surfacing: the caller wanted to be logged out, and they are.
+        with contextlib.suppress(Exception):
             RefreshToken(token).blacklist()
-        except Exception:
-            # An invalid or already-blacklisted token is not an error worth
-            # surfacing: the caller wanted to be logged out, and they are.
-            pass
         return Response(status=status.HTTP_205_RESET_CONTENT)
 
 

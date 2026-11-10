@@ -166,7 +166,7 @@ def upload(file, *, context: str, **options) -> dict:
         import cloudinary.uploader
     except ImportError:
         logger.error('cloudinary is not installed; upload rejected')
-        raise ValidationError({'file': 'File uploads are not available right now.'})
+        raise ValidationError({'file': 'File uploads are not available right now.'}) from None
 
     try:
         return cloudinary.uploader.upload(
@@ -179,7 +179,7 @@ def upload(file, *, context: str, **options) -> dict:
         # Never surface the provider's error text: it can contain the API
         # key and internal paths.
         logger.exception('Cloudinary upload failed for context %s', context)
-        raise ValidationError({'file': 'The upload failed. Please try again.'})
+        raise ValidationError({'file': 'The upload failed. Please try again.'}) from None
 
 
 def delete(public_id: str, resource_type: str = 'image') -> bool:
@@ -233,29 +233,3 @@ def responsive_urls(public_id: str, widths=None) -> dict:
     """Width -> URL, for a srcset."""
     widths = widths or [400, 800, 1200]
     return {w: url_for(public_id, width=w, crop='limit') for w in widths}
-
-
-def signed_download_url(public_id: str, resource_type: str = 'auto',
-                        expires_in: int = 3600) -> str:
-    """
-    A time-limited URL for something that is not public.
-
-    Deliverables and message attachments belong to two named parties, not to
-    anyone holding the link. A permanent public URL for a customer's unreleased
-    master is a leak that never closes.
-    """
-    try:
-        import time
-        import cloudinary.utils
-        url, _ = cloudinary.utils.cloudinary_url(
-            public_id,
-            resource_type=resource_type,
-            type='authenticated',
-            sign_url=True,
-            expires_at=int(time.time()) + expires_in,
-            secure=True,
-        )
-        return url
-    except Exception:
-        logger.exception('Could not sign a URL for %s', public_id)
-        return ''

@@ -31,7 +31,7 @@ class Command(BaseCommand):
             try:
                 txn = settle(reference)
             except paystack.PaystackError as exc:
-                raise CommandError(f'Paystack could not be asked: {exc}')
+                raise CommandError(f'Paystack could not be asked: {exc}') from exc
             if txn is None:
                 raise CommandError(f'No Paystack payment with reference {reference}.')
             self.stdout.write(f'{reference}: {txn.status} · {txn.amount_display}'

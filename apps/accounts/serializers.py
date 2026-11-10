@@ -62,7 +62,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         try:
             validate_password(attrs['password'], user=candidate)
         except DjangoValidationError as exc:
-            raise serializers.ValidationError({'password': list(exc.messages)})
+            raise serializers.ValidationError({'password': list(exc.messages)}) from exc
 
         return attrs
 
@@ -95,7 +95,7 @@ class RegisterSerializer(serializers.ModelSerializer):
                 user.save()
         except IntegrityError:
             raise serializers.ValidationError(
-                {'email': 'An account with this email already exists.'})
+                {'email': 'An account with this email already exists.'}) from None
         return user
 
 
@@ -264,7 +264,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
             pk = force_str(urlsafe_base64_decode(attrs['uid']))
             user = User.objects.get(pk=pk)
         except (DjangoValidationError, ValueError, TypeError, OverflowError, User.DoesNotExist):
-            raise serializers.ValidationError({'token': 'This reset link is not valid.'})
+            raise serializers.ValidationError({'token': 'This reset link is not valid.'}) from None
 
         if not default_token_generator.check_token(user, attrs['token']):
             raise serializers.ValidationError({
@@ -274,7 +274,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         try:
             validate_password(attrs['password'], user=user)
         except DjangoValidationError as exc:
-            raise serializers.ValidationError({'password': list(exc.messages)})
+            raise serializers.ValidationError({'password': list(exc.messages)}) from exc
 
         attrs['user'] = user
         return attrs

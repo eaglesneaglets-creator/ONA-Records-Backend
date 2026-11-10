@@ -112,31 +112,6 @@ class IsOwnerOrONAAdmin(BasePermission):
         return IsOwner().has_object_permission(request, view, obj)
 
 
-class IsPartyToProject(BasePermission):
-    """
-    Object-level: you are the customer or the professional on this project.
-
-    Everything the two parties share — messages, deliverables, the escrow
-    ledger for that project — hangs off this. Nobody else, admin aside, has
-    any business reading a conversation between two people.
-    """
-
-    message = 'You are not part of this project.'
-
-    def has_object_permission(self, request, view, obj):
-        u = request.user
-        if not u.is_authenticated:
-            return False
-        if u.role == 'admin' or u.is_superuser:
-            return True
-
-        project = getattr(obj, 'project', obj)
-        return u.id in (
-            getattr(project, 'customer_id', None),
-            getattr(project, 'professional_id', None),
-        )
-
-
 class IsEmailVerified(BasePermission):
     """
     Gate the things that matter behind a confirmed email.

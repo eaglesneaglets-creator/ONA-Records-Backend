@@ -120,7 +120,7 @@ def priced(room, service, hours, quantity):
     try:
         return quote(room, service, hours, quantity)
     except PricingError as exc:
-        raise serializers.ValidationError({exc.field: str(exc)})
+        raise serializers.ValidationError({exc.field: str(exc)}) from exc
 
 
 class BookingSerializer(serializers.ModelSerializer):

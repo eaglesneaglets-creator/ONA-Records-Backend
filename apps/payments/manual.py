@@ -76,7 +76,7 @@ def record_payment(booking, amount_pesewas: int, method: str, reference: str, no
     except IntegrityError:
         # The (provider, provider_ref) unique constraint: the same Mobile
         # Money or bank reference recorded twice is the same money.
-        raise LedgerError('A payment with this reference has already been recorded.')
+        raise LedgerError('A payment with this reference has already been recorded.') from None
     mark_succeeded(txn, actor=actor, note=note)
     return txn
 
