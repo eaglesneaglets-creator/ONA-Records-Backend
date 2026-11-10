@@ -21,7 +21,7 @@ omit =
 # same PR.
 #
 #   core/storage.py       → wire when portfolio/deliverable uploads land
-#                           (Cloudinary via MediaStorage; see docs/setup.md)
+#                           (S3 bucket; no caller yet)
 #   core/mixins/*         → wire when the first model inherits them
 #                           (soft delete is required on money-touching rows)
     core/mixins/*

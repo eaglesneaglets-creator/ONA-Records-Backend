@@ -84,12 +84,12 @@ if PAYSTACK_SECRET_KEY and not PAYSTACK_SECRET_KEY.startswith('sk_test_'):  # no
     )
 
 # ---------------------------------------------------------------------------
-# 6. Media — separate folder tree
+# 6. Media — separate bucket and key prefix
 # ---------------------------------------------------------------------------
-# Same Cloudinary account is fine; the same folders are not. Test uploads
-# must not appear in the real media library, and clearing staging media must
-# never touch production. core/storage.py routes by this prefix.
-CLOUDINARY_FOLDER_PREFIX = 'ona-staging'
+# Staging has its own bucket (Railway creates one per environment). The key
+# prefix is a second guard: if both were ever pointed at one bucket, staging
+# files would still sit apart. core/storage.py routes by this prefix.
+S3_KEY_PREFIX = 'ona-staging'
 
 # ---------------------------------------------------------------------------
 # 7. Email — nothing reaches a real person

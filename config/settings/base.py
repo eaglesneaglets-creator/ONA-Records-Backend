@@ -233,12 +233,22 @@ HUBTEL_SMS_CLIENT_SECRET = config('HUBTEL_SMS_CLIENT_SECRET', default='')
 HUBTEL_SMS_SENDER_ID = config('HUBTEL_SMS_SENDER_ID', default='ONARecords')
 
 # ---------------------------------------------------------------------------
-# Cloudinary
+# File storage: an S3-compatible bucket (Railway Storage Buckets)
 # ---------------------------------------------------------------------------
-CLOUDINARY_CLOUD_NAME = config('CLOUDINARY_CLOUD_NAME', default='')
-CLOUDINARY_API_KEY = config('CLOUDINARY_API_KEY', default='')
-CLOUDINARY_API_SECRET = config('CLOUDINARY_API_SECRET', default='')
-CLOUDINARY_FOLDER_PREFIX = 'ona'
+# All empty = uploads switched off (core/storage.py refuses them politely).
+# On Railway, reference the bucket's own variables: S3_BUCKET=${{Bucket.BUCKET}}.
+S3_BUCKET = config('S3_BUCKET', default='')
+S3_ENDPOINT_URL = config('S3_ENDPOINT_URL', default='')
+S3_ACCESS_KEY_ID = config('S3_ACCESS_KEY_ID', default='')
+S3_SECRET_ACCESS_KEY = config('S3_SECRET_ACCESS_KEY', default='')
+S3_REGION = config('S3_REGION', default='auto')
+# 'virtual' (bucket name as subdomain) is what Railway buckets use; the
+# bucket's Credentials tab says if an older bucket needs 'path'.
+S3_ADDRESSING_STYLE = config('S3_ADDRESSING_STYLE', default='virtual')
+# How long a link to a stored file works. The bucket is private, so every
+# link is signed and temporary.
+S3_URL_EXPIRY_SECONDS = config('S3_URL_EXPIRY_SECONDS', default=3600, cast=int)
+S3_KEY_PREFIX = 'ona'
 
 # ---------------------------------------------------------------------------
 # Frontend

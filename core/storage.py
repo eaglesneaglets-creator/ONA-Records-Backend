@@ -1,20 +1,27 @@
 """
-Cloudinary storage.
+File storage: an S3-compatible bucket (Railway Storage Buckets).
 
-Adapted from the Eagles & Eaglets implementation. The valuable idea carried
-over is the upload CONTEXT: a caller must name what kind of upload this is,
-and the declared MIME type and size ceiling are validated against that name.
-The context list is the allow-list, and it lives here rather than being
-passed in at the call site. This is an ingress guard, not content inspection;
-surfaces accepting untrusted files still need signature and malware checks.
+The valuable idea here is the upload CONTEXT: a caller must name what kind of
+upload this is, and the declared MIME type and size ceiling are validated
+against that name. The context list is the allow-list, and it lives here
+rather than being passed in at the call site. This is an ingress guard, not
+content inspection; surfaces accepting untrusted files still need signature
+and malware checks.
 
 WHY THIS IS BEHIND AN INTERFACE
-    The plan commits to Cloudinary now and a possible S3 move later. Every
-    caller goes through upload()/delete()/url_for() so that swap is a change
-    to this file, not to every app that stores a portfolio track.
+    Every caller goes through upload()/delete()/url_for(), so changing the
+    provider is a change to this file, not to every app that stores a file.
+    It has been done once already: this module used to talk to Cloudinary.
+
+WHAT A BUCKET DOES NOT DO
+    Railway buckets are private and store bytes exactly as uploaded. There is
+    no public URL and no on-the-fly resizing: url_for() returns a presigned
+    link that expires, and an image is served at the size it was uploaded.
 """
 
 import logging
+import uuid
+from functools import lru_cache
 
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
@@ -22,10 +29,10 @@ from rest_framework.exceptions import ValidationError
 logger = logging.getLogger(__name__)
 
 
-# Folders are prefixed per environment so staging uploads never appear in the
-# production media library, and clearing staging can never touch real files.
+# Keys are prefixed per environment so staging uploads never sit beside
+# production files, even if both were ever pointed at one bucket.
 def _prefix() -> str:
-    return getattr(settings, 'CLOUDINARY_FOLDER_PREFIX', 'ona')
+    return getattr(settings, 'S3_KEY_PREFIX', 'ona')
 
 
 FOLDERS = {
@@ -49,7 +56,6 @@ UPLOAD_CONTEXTS = {
         'folder': 'profile_photo',
         'max_bytes': 5 * 1024 * 1024,
         'allowed_mime': {'image/jpeg', 'image/png', 'image/webp'},
-        'resource_type': 'image',
     },
 
     # A professional's portfolio. Audio is the primary case for a record
@@ -61,24 +67,21 @@ UPLOAD_CONTEXTS = {
             'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/aiff',
             'audio/x-aiff', 'audio/flac', 'audio/mp4', 'audio/aac',
         },
-        'resource_type': 'video',   # Cloudinary handles audio under 'video'
     },
     'portfolio_video': {
         'folder': 'portfolio_video',
         'max_bytes': 500 * 1024 * 1024,
         'allowed_mime': {'video/mp4', 'video/quicktime', 'video/webm'},
-        'resource_type': 'video',
     },
     'portfolio_image': {
         'folder': 'portfolio_image',
         'max_bytes': 10 * 1024 * 1024,
         'allowed_mime': {'image/jpeg', 'image/png', 'image/webp'},
-        'resource_type': 'image',
     },
 
     # Work delivered on a project. The customer approves against this, and
     # approval releases money — so the file must be exactly what was
-    # uploaded, hence no transformation on retrieval.
+    # uploaded. A bucket never alters what it stores.
     'deliverable': {
         'folder': 'deliverable',
         'max_bytes': 500 * 1024 * 1024,
@@ -88,7 +91,6 @@ UPLOAD_CONTEXTS = {
             'image/jpeg', 'image/png',
             'application/pdf', 'application/zip',
         },
-        'resource_type': 'auto',
     },
 
     # Attachments inside masked conversations. Deliberately restrictive:
@@ -102,42 +104,73 @@ UPLOAD_CONTEXTS = {
             'application/pdf',
             'audio/mpeg',
         },
-        'resource_type': 'auto',
     },
 
     'studio_photo': {
         'folder': 'studio_photo',
         'max_bytes': 10 * 1024 * 1024,
         'allowed_mime': {'image/jpeg', 'image/png', 'image/webp'},
-        'resource_type': 'image',
     },
 }
 
 
-IMAGE_PRESETS = {
-    'thumbnail': {'width': 150, 'height': 150, 'crop': 'fill'},
-    'avatar': {'width': 200, 'height': 200, 'crop': 'fill', 'gravity': 'face'},
-    'card': {'width': 600, 'height': 400, 'crop': 'fill'},
-    'cover': {'width': 1200, 'height': 400, 'crop': 'fill'},
-    'content': {'width': 800, 'crop': 'limit'},
+# The stored extension comes from the validated MIME type, never from the
+# uploader's filename: a name is attacker-controlled text, the type has
+# already passed the allow-list.
+EXTENSIONS = {
+    'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp',
+    'audio/mpeg': '.mp3', 'audio/wav': '.wav', 'audio/x-wav': '.wav',
+    'audio/aiff': '.aiff', 'audio/x-aiff': '.aiff', 'audio/flac': '.flac',
+    'audio/mp4': '.m4a', 'audio/aac': '.aac',
+    'video/mp4': '.mp4', 'video/quicktime': '.mov', 'video/webm': '.webm',
+    'application/pdf': '.pdf', 'application/zip': '.zip',
 }
 
 
+@lru_cache(maxsize=1)
+def _client():
+    """
+    The S3 client, or None when no bucket is configured.
+
+    Built once per process. Checksums are sent only when the API requires
+    them: newer boto3 adds them to every request by default, which
+    S3-compatible providers do not all accept.
+    """
+    if not (settings.S3_BUCKET and settings.S3_ACCESS_KEY_ID and settings.S3_SECRET_ACCESS_KEY):
+        return None
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        's3',
+        endpoint_url=settings.S3_ENDPOINT_URL or None,
+        aws_access_key_id=settings.S3_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.S3_SECRET_ACCESS_KEY,
+        region_name=settings.S3_REGION,
+        config=Config(
+            signature_version='s3v4',
+            s3={'addressing_style': settings.S3_ADDRESSING_STYLE},
+            request_checksum_calculation='when_required',
+            response_checksum_validation='when_required',
+        ),
+    )
+
+
 def folder_for(kind: str) -> str:
-    """Full Cloudinary folder path, environment-prefixed."""
+    """Key prefix for a kind of upload, environment-prefixed."""
     return '%s/%s' % (_prefix(), FOLDERS.get(kind, FOLDERS['misc']))
 
 
-def upload(file, *, context: str, **options) -> dict:
+def upload(file, *, context: str) -> dict:
     """
     Validate against a named context, then store.
 
-    There is no unvalidated variant on purpose. The reference kept a generic
-    upload() for backward compatibility and new code kept reaching for it;
-    starting without one avoids that.
+    There is no unvalidated variant on purpose: a generic upload() is what
+    new code reaches for, and then the allow-list protects nothing.
 
-    Returns the provider's response. Raises ValidationError on a rejected
-    file so DRF renders it as a 400 rather than a 500.
+    Returns {'key', 'bytes', 'content_type'}. Keep the key: it is what
+    url_for() and delete() take. Raises ValidationError on a rejected file so
+    DRF renders it as a 400 rather than a 500.
     """
     if not file:
         raise ValidationError({'file': 'A file is required.'})
@@ -162,27 +195,25 @@ def upload(file, *, context: str, **options) -> dict:
                     % (mime, ', '.join(sorted(rules['allowed_mime']))),
         })
 
-    try:
-        import cloudinary.uploader
-    except ImportError:
-        logger.error('cloudinary is not installed; upload rejected')
-        raise ValidationError({'file': 'File uploads are not available right now.'}) from None
+    client = _client()
+    if client is None:
+        logger.error('No storage bucket is configured; upload rejected')
+        raise ValidationError({'file': 'File uploads are not available right now.'})
 
+    # A random name: two uploads never collide, and one key cannot be guessed
+    # from another.
+    key = '%s/%s%s' % (folder_for(rules['folder']), uuid.uuid4().hex, EXTENSIONS.get(mime, ''))
     try:
-        return cloudinary.uploader.upload(
-            file,
-            folder=folder_for(rules['folder']),
-            resource_type=rules.get('resource_type', 'auto'),
-            **options,
-        )
+        client.upload_fileobj(file, settings.S3_BUCKET, key, ExtraArgs={'ContentType': mime})
     except Exception:
-        # Never surface the provider's error text: it can contain the API
-        # key and internal paths.
-        logger.exception('Cloudinary upload failed for context %s', context)
+        # Never surface the provider's error text: it can contain the bucket
+        # name, the endpoint and request signatures.
+        logger.exception('Bucket upload failed for context %s', context)
         raise ValidationError({'file': 'The upload failed. Please try again.'}) from None
+    return {'key': key, 'bytes': size, 'content_type': mime}
 
 
-def delete(public_id: str, resource_type: str = 'image') -> bool:
+def delete(key: str) -> bool:
     """
     Remove a stored file.
 
@@ -192,44 +223,38 @@ def delete(public_id: str, resource_type: str = 'image') -> bool:
     a cleanup job, not a blocked request.
     """
     try:
-        import cloudinary.uploader
-        cloudinary.uploader.destroy(public_id, resource_type=resource_type)
+        client = _client()
+        if client is None or not key:
+            return False
+        client.delete_object(Bucket=settings.S3_BUCKET, Key=key)
         return True
     except Exception:
-        logger.exception('Cloudinary delete failed for %s', public_id)
+        logger.exception('Bucket delete failed for %s', key)
         return False
 
 
-def url_for(public_id: str, preset: str = None, **transforms) -> str:
+def url_for(key: str, *, expires: int = None, download_name: str = None) -> str:
     """
-    Build a delivery URL, optionally transformed.
+    A temporary link to a stored file, or '' when there is none.
 
-    Deliverables must never be transformed — the customer approves the file
-    as delivered, and approval releases money. Pass no preset for those.
+    The bucket is private, so every link is signed and expires (default
+    S3_URL_EXPIRY_SECONDS). Build it when the response is rendered and never
+    store it. `download_name` makes the browser save the file under that
+    name instead of showing it.
     """
-    if not public_id:
+    if not key:
         return ''
-
     try:
-        import cloudinary.utils
-    except ImportError:
-        return ''
-
-    params = dict(IMAGE_PRESETS.get(preset, {}) if preset else {})
-    params.update(transforms)
-    params.setdefault('secure', True)
-    params.setdefault('fetch_format', 'auto')
-    params.setdefault('quality', 'auto')
-
-    try:
-        url, _ = cloudinary.utils.cloudinary_url(public_id, **params)
-        return url
+        client = _client()
+        if client is None:
+            return ''
+        params = {'Bucket': settings.S3_BUCKET, 'Key': key}
+        if download_name:
+            safe = ''.join(c for c in download_name if c.isalnum() or c in ' ._-').strip()
+            params['ResponseContentDisposition'] = 'attachment; filename="%s"' % (safe or 'download')
+        return client.generate_presigned_url(
+            'get_object', Params=params, ExpiresIn=expires or settings.S3_URL_EXPIRY_SECONDS,
+        )
     except Exception:
-        logger.exception('Could not build a URL for %s', public_id)
+        logger.exception('Could not build a URL for %s', key)
         return ''
-
-
-def responsive_urls(public_id: str, widths=None) -> dict:
-    """Width -> URL, for a srcset."""
-    widths = widths or [400, 800, 1200]
-    return {w: url_for(public_id, width=w, crop='limit') for w in widths}
