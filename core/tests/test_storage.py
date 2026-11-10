@@ -6,6 +6,19 @@ from rest_framework.exceptions import ValidationError
 
 from core import storage
 
+BUCKET = override_settings(
+    S3_BUCKET='ona-bucket', S3_ENDPOINT_URL='https://s3.example.test',
+    S3_ACCESS_KEY_ID='key-id', S3_SECRET_ACCESS_KEY='key-secret',
+    S3_REGION='auto', S3_KEY_PREFIX='ona-test',
+)
+
+
+@pytest.fixture(autouse=True)
+def fresh_client():
+    storage._client.cache_clear()
+    yield
+    storage._client.cache_clear()
+
 
 def upload_file(*, size=100, content_type='image/png'):
     return Mock(size=size, content_type=content_type)
@@ -29,41 +42,61 @@ def test_upload_rejects_oversized_file():
         storage.upload(upload_file(size=6 * 1024 * 1024), context='profile_photo')
 
 
-@override_settings(CLOUDINARY_FOLDER_PREFIX='ona-test')
-def test_upload_uses_context_owned_provider_options():
+@override_settings(S3_BUCKET='', S3_ACCESS_KEY_ID='', S3_SECRET_ACCESS_KEY='')
+def test_without_a_bucket_uploads_are_refused_and_nothing_else_breaks():
+    with pytest.raises(ValidationError, match='not available'):
+        storage.upload(upload_file(), context='profile_photo')
+    assert storage.url_for('ona/profiles/a.png') == ''
+    assert storage.delete('ona/profiles/a.png') is False
+
+
+@BUCKET
+def test_upload_stores_under_the_context_folder_with_a_generated_name():
     file = upload_file()
-    response = {'public_id': 'ona-test/profiles/avatar'}
-    with patch('cloudinary.uploader.upload', return_value=response) as upload:
-        result = storage.upload(file, context='profile_photo', overwrite=True)
-    assert result == response
-    upload.assert_called_once_with(
-        file, folder='ona-test/profiles', resource_type='image', overwrite=True,
+    client = Mock()
+    with patch('core.storage._client', return_value=client):
+        result = storage.upload(file, context='profile_photo')
+    # The name is generated; nothing from the uploader's filename reaches it.
+    assert result['key'].startswith('ona-test/profiles/')
+    assert result['key'].endswith('.png')
+    assert result == {'key': result['key'], 'bytes': 100, 'content_type': 'image/png'}
+    client.upload_fileobj.assert_called_once_with(
+        file, 'ona-bucket', result['key'], ExtraArgs={'ContentType': 'image/png'},
     )
 
 
+@BUCKET
 def test_provider_errors_are_hidden_from_the_client():
-    with patch('cloudinary.uploader.upload', side_effect=RuntimeError('secret detail')):
+    client = Mock()
+    client.upload_fileobj.side_effect = RuntimeError('secret detail')
+    with patch('core.storage._client', return_value=client):
         with pytest.raises(ValidationError) as error:
             storage.upload(upload_file(), context='profile_photo')
     assert 'secret detail' not in str(error.value)
     assert 'upload failed' in str(error.value).lower()
 
 
+@BUCKET
 def test_delete_returns_provider_outcome():
-    with patch('cloudinary.uploader.destroy') as destroy:
-        assert storage.delete('asset', resource_type='video') is True
-    destroy.assert_called_once_with('asset', resource_type='video')
-    with patch('cloudinary.uploader.destroy', side_effect=RuntimeError('down')):
-        assert storage.delete('asset') is False
+    client = Mock()
+    with patch('core.storage._client', return_value=client):
+        assert storage.delete('ona-test/profiles/a.png') is True
+        client.delete_object.assert_called_once_with(Bucket='ona-bucket', Key='ona-test/profiles/a.png')
+        client.delete_object.side_effect = RuntimeError('down')
+        assert storage.delete('ona-test/profiles/a.png') is False
 
 
-def test_url_helpers_are_defensive_and_preserve_overrides():
+@BUCKET
+def test_url_for_is_a_signed_link_that_expires():
+    """Built by the real client: signing is local, so no network is touched."""
     assert storage.url_for('') == ''
-    with patch('cloudinary.utils.cloudinary_url', return_value=('https://cdn/asset', {})) as url:
-        assert storage.url_for('asset', preset='thumbnail', width=320) == 'https://cdn/asset'
-    url.assert_called_once_with(
-        'asset', width=320, height=150, crop='fill', secure=True,
-        fetch_format='auto', quality='auto',
-    )
-    with patch('core.storage.url_for', side_effect=lambda public_id, **opts: opts['width']):
-        assert storage.responsive_urls('asset', widths=[320, 640]) == {320: 320, 640: 640}
+    url = storage.url_for('ona-test/profiles/a.png', expires=900)
+    assert url.startswith('https://ona-bucket.s3.example.test/ona-test/profiles/a.png?')
+    assert 'X-Amz-Expires=900' in url and 'X-Amz-Signature=' in url
+    assert 'key-secret' not in url
+
+
+@BUCKET
+def test_download_name_cannot_inject_a_header():
+    url = storage.url_for('ona-test/deliverables/a.zip', download_name='mix"\r\nX: y.zip')
+    assert 'filename%3D%22mixX%20y.zip%22' in url

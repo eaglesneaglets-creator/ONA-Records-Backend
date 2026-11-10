@@ -13,7 +13,9 @@ import random
 
 import pytest
 
-from apps.payments.money import Split, format_ghs, split_commission
+from apps.payments.money import (
+    Split, deposit_pesewas, format_ghs, pass_on_fee, provider_fee, split_commission,
+)
 
 
 class TestSplitCommission:
@@ -154,3 +156,29 @@ class TestFormatGhs:
     def test_rejects_boolean_amount(self):
         with pytest.raises(TypeError):
             format_ghs(True)
+
+
+class TestDepositAndFee:
+    """ONA's terms: a 50% deposit, Paystack's fee passed on to the customer."""
+
+    @pytest.mark.parametrize('total,expected', [(40000, 20000), (15001, 7501), (1, 1), (0, 0)])
+    def test_deposit_rounds_up_to_the_pesewa(self, total, expected):
+        assert deposit_pesewas(total, 50) == expected
+
+    def test_ona_nets_exactly_the_amount_after_paystacks_cut(self):
+        # 50,000 amounts across the range: never short by a pesewa, never
+        # more than one pesewa over.
+        for amount in range(1, 5_000_001, 100):
+            fee = pass_on_fee(amount, 195)
+            charge = amount + fee
+            net = charge - provider_fee(charge, 195)
+            assert net >= amount
+            assert (charge - 1) - provider_fee(charge - 1, 195) < amount
+
+    def test_zero_rate_adds_nothing(self):
+        assert pass_on_fee(12345, 0) == 0
+
+    @pytest.mark.parametrize('bad', [0, -1, 1.5])
+    def test_refuses_nonsense(self, bad):
+        with pytest.raises(ValueError):
+            pass_on_fee(bad, 195)

@@ -1,0 +1,19 @@
+{% autoescape off %}Hello {{ name }},
+
+Your booking {{ reference }} for {{ when }} has been cancelled, and the time
+has been released.
+{% if released %}
+It was held for an hour, and the deposit was not paid in that time, so the
+slot has gone back on the calendar. You are welcome to book again.
+{% endif %}{% if held %}
+Under ONA's booking terms the {{ held }} you paid is not refunded.{% if credit_until %}
+Because you cancelled at least 48 hours ahead, it is kept as credit towards a
+new session booked and completed by {{ credit_until }}. Book again and reply to
+this email with your new reference, and ONA will apply it.{% else %} ONA will
+contact you about it.{% endif %}
+{% endif %}
+If you did not ask for this, reply to this email and we will look into it.
+
+Book another session: {{ bookings_url }}
+
+ONA Records{% endautoescape %}

@@ -106,6 +106,15 @@ EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='ONA Records <no-reply@onarecords.com>')
 
 # ---------------------------------------------------------------------------
+# Behind Railway's proxy: exactly one hop appends to X-Forwarded-For. Without
+# this DRF keys throttles on the whole header, which the client controls, so a
+# random header per request bypassed every rate limit.
+REST_FRAMEWORK = {  # noqa: F405
+    **REST_FRAMEWORK,  # noqa: F405
+    'NUM_PROXIES': config('NUM_PROXIES', default=1, cast=int),
+}
+
+# ---------------------------------------------------------------------------
 # Sentry — optional
 # ---------------------------------------------------------------------------
 SENTRY_DSN = config('SENTRY_DSN', default='')
@@ -121,3 +130,8 @@ if SENTRY_DSN:
         traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float),
         send_default_pii=False,  # this platform holds personal and payment data
     )
+
+# Payments must only ever talk to Paystack over TLS (PAYSTACK_API_BASE is a
+# local-simulation hook, never a production knob).
+if not PAYSTACK_API_BASE.startswith('https://'):  # noqa: F405
+    raise ImproperlyConfigured('PAYSTACK_API_BASE must be https in production.')  # noqa: F405

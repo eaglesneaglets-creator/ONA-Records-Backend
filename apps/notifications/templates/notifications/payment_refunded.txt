@@ -1,0 +1,13 @@
+{% autoescape off %}Hello {{ name }},
+
+ONA has refunded {{ amount }} for your booking {{ reference }}
+({{ when }}).
+{% if note %}
+  How it was returned: {{ note }}
+{% endif %}
+If it has not reached you within a few days, reply to this email with the
+reference above and we will look into it.
+
+Your bookings: {{ bookings_url }}
+
+ONA Records{% endautoescape %}

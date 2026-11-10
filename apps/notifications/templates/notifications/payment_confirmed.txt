@@ -1,0 +1,16 @@
+{% autoescape off %}Hello {{ name }},
+
+We have received {{ amount }} for booking {{ reference }}.{% if confirmed %}
+Your session is confirmed.{% endif %}{% if balance %}
+The balance of {{ balance }} is due before or on the day of your session,
+before files or final deliverables are released.{% endif %}
+
+  Session: {{ when }}
+  Room:    {{ room }}, with {{ engineer }}
+
+Your receipt ({{ receipt_number }}) is attached. Deposits are covered by ONA's
+booking terms: {{ terms_url }}
+
+Your bookings: {{ bookings_url }}
+
+ONA Records{% endautoescape %}

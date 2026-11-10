@@ -6,10 +6,36 @@ app — a payment release, a professional approval, a review takedown — and no
 of those should have to depend on the accounts app to write a record.
 """
 
+import ipaddress
 import uuid
 
 from django.conf import settings
 from django.db import models, transaction
+
+
+def client_ip(request):
+    """
+    The caller's address, trusting only the proxy hops we actually have.
+
+    The FIRST X-Forwarded-For entry is whatever the client typed. With
+    NUM_PROXIES set (production: Railway, 1 hop) the trustworthy address is
+    the Nth from the end. Anything that is not a valid IP is dropped rather
+    than saved — an invalid value made the inet column raise and the audit
+    row was silently lost.
+    """
+    from django.conf import settings
+
+    num_proxies = (getattr(settings, 'REST_FRAMEWORK', {}) or {}).get('NUM_PROXIES')
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    candidate = request.META.get('REMOTE_ADDR')
+    if forwarded and num_proxies:
+        hops = [h.strip() for h in forwarded.split(',') if h.strip()]
+        if hops:
+            candidate = hops[-min(num_proxies, len(hops))]
+    try:
+        return str(ipaddress.ip_address(candidate)) if candidate else None
+    except ValueError:
+        return None
 
 
 class AuditLog(models.Model):
@@ -143,13 +169,7 @@ class AuditLog(models.Model):
                 entry.target_id = str(getattr(target, 'pk', ''))
 
             if request is not None:
-                # X-Forwarded-For is set by Railway's proxy; the first entry
-                # is the client. Falls back to REMOTE_ADDR locally.
-                forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-                entry.ip_address = (
-                    forwarded.split(',')[0].strip() if forwarded
-                    else request.META.get('REMOTE_ADDR')
-                )
+                entry.ip_address = client_ip(request)
 
             # Isolate a database failure from a transaction owned by the
             # caller. Catching the exception alone leaves that transaction
