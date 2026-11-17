@@ -67,4 +67,3 @@ tmp/
 /graft/
 
 # Graft codebase graph — local, regenerable cache
-graft/

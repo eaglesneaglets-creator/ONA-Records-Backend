@@ -60,6 +60,7 @@ urlpatterns = [
     path('api/v1/studio/', include('apps.studio.urls')),
     path('api/v1/content/', include('apps.content.urls')),
     path('api/v1/payments/', include('apps.payments.urls')),
+    path('api/v1/kyc/', include('apps.kyc.urls')),
     path('api/v1/admin/', include('config.admin_api')),
     path(settings.ADMIN_URL, admin.site.urls),  # login form: core/admin_security.py
 ]

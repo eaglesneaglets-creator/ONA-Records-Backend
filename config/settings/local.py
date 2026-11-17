@@ -69,5 +69,5 @@ REST_FRAMEWORK = {
     **REST_FRAMEWORK,
     'DEFAULT_THROTTLE_RATES': {'anon': '2000/hour', 'user': '5000/hour',
                                'public': '20000/hour', 'booking': '2000/hour',
-                               'payment': '2000/hour'},
+                               'payment': '2000/hour', 'kyc': '2000/hour'},
 }

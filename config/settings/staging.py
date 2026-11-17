@@ -120,6 +120,7 @@ REST_FRAMEWORK = {  # noqa: F405
         'public': '5000/hour',
         'booking': '200/hour',
         'payment': '200/hour',
+        'kyc': '600/hour',
         'otp': '50/hour',
     },
 }

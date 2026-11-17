@@ -83,6 +83,9 @@ class AuditLog(models.Model):
         REVIEW_PUBLISHED = 'review.published', 'Review published'
         REVIEW_REJECTED = 'review.rejected', 'Review rejected'
 
+        # Identity checks (decided in the KYC service, recorded here too)
+        IDENTITY_DECIDED = 'identity.decided', 'Identity check decided'
+
         # Bookings
         BOOKING_CANCELLED = 'booking.cancelled', 'Booking cancelled'
 

@@ -47,6 +47,7 @@ LOCAL_APPS = [
     'apps.reviews',        # two-way ratings
     'apps.notifications',  # pluggable channels
     'apps.content',        # staff-edited site content (FAQ)
+    'apps.kyc',            # identity checks, through the shared KYC service
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -136,6 +137,9 @@ REST_FRAMEWORK = {
         # Starting a checkout or checking its outcome. Each start calls
         # Paystack, so it is bounded per customer.
         'payment': '30/hour',
+        # Identity checks: each call goes on to the KYC service. Generous
+        # enough for retaking photos, small enough to stop a loop.
+        'kyc': '120/hour',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.handler.api_exception_handler',
 }
@@ -226,6 +230,14 @@ INVOICE_ADDRESS = config('INVOICE_ADDRESS', default='Accra, Ghana')
 INVOICE_TIN = config('INVOICE_TIN', default='')
 INVOICE_CONTACT = config('INVOICE_CONTACT', default='')        # "Name · phone · email"
 INVOICE_BANK_DETAILS = config('INVOICE_BANK_DETAILS', default='')  # "Bank · account name · number"
+
+# Identity checks — the shared KYC service (repo: kyc-service). Its
+# `create_platform ona-records --can-review` command prints the key and the
+# webhook secret. Empty URL or key: the identity page says checks are not
+# available yet, and nothing else changes.
+KYC_API_URL = config('KYC_API_URL', default='')  # e.g. https://kyc-service-staging.up.railway.app
+KYC_API_KEY = config('KYC_API_KEY', default='')
+KYC_WEBHOOK_SECRET = config('KYC_WEBHOOK_SECRET', default='')
 
 # SMS (not used in v0.1) — Hubtel's SMS API, independent of payments.
 HUBTEL_SMS_CLIENT_ID = config('HUBTEL_SMS_CLIENT_ID', default='')
