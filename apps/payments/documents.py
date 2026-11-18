@@ -14,6 +14,8 @@ from __future__ import annotations
 from django.db import IntegrityError, transaction as db
 from django.utils import timezone
 
+from core.business import rules
+
 from .models import DocumentCounter, Invoice, Receipt, Transaction, TransactionStatus
 
 
@@ -82,6 +84,7 @@ def issue_invoice(booking) -> Invoice:
     return Invoice.objects.create(
         booking=booking, number=next_number('INV'), customer_name=name,
         customer_email=customer.email, lines=lines, total_pesewas=total,
+        tax_rates=rules().active_taxes,
     )
 
 

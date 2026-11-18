@@ -43,6 +43,8 @@ from .models import (
     SLOT_HOLDING_STATUSES, BookingStatus, Engineer, Package, Room, Service, StudioBooking,
     constraint_name,
 )
+from core.business import rules
+
 from .serializers import (
     BookingCreateSerializer, BookingRescheduleSerializer, BookingSerializer,
     BookingSummarySerializer, EngineerSerializer, PackageSerializer, RoomSerializer,
@@ -236,7 +238,6 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
         before = booking.status
         booking.status = BookingStatus.CANCELLED
         booking.save(update_fields=['status', 'updated_at'])
-        from django.conf import settings
 
         from .money import net_paid
         paid = net_paid(booking)
@@ -249,7 +250,7 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
                         paid_pesewas=paid,
                         credit_pesewas=paid,
                         credit_until=(timezone.localdate()
-                                      + timedelta(days=settings.DEPOSIT_CREDIT_DAYS)).isoformat()
+                                      + timedelta(days=rules().deposit_credit_days)).isoformat()
                         if paid else None)
         notify_booking(booking, Kind.BOOKING_CANCELLED)
         return Response(BookingSerializer(booking, context=self.get_serializer_context()).data)

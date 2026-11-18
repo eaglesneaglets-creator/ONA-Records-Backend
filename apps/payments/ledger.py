@@ -19,11 +19,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from django.conf import settings
 from django.db import transaction as db
 from django.db.models import Sum
 
 from apps.payments.money import split_commission
+
+from core.business import rules
 
 from .models import (
     Beneficiary, Commission, EntryType, LedgerEntry, Provider, Transaction, TransactionStatus,
@@ -42,7 +43,7 @@ def studio_commission_percent() -> int:
     bookings at all is still open, so the default is 0. Changing the setting
     affects new transactions only — the rate is frozen on each one.
     """
-    pct = getattr(settings, 'STUDIO_COMMISSION_PERCENT', 0)
+    pct = rules().studio_commission_percent
     if type(pct) is not int or not 0 <= pct <= 100:
         raise LedgerError(f'STUDIO_COMMISSION_PERCENT must be an int 0–100, got {pct!r}.')
     return pct

@@ -14,6 +14,7 @@ pytestmark = pytest.mark.django_db
 def ready(settings):
     settings.DEBUG = False
     settings.ADMIN_URL = 'staff-7f3a/'
+    settings.FRONTEND_URL = 'https://onarecords.example'
     settings.EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
     settings.EMAIL_HOST = 'smtp.gmail.com'
     settings.BOOKING_REQUIRES_VERIFIED_EMAIL = True
@@ -59,6 +60,11 @@ def test_unsafe_settings_are_blockers(ready, settings):
 def test_smtp_without_a_host_is_a_blocker(ready, settings):
     settings.EMAIL_HOST = ''
     assert any('EMAIL_HOST is not set' in m for lvl, m in collect() if lvl == 'BLOCKER')
+
+
+def test_a_local_frontend_url_blocks_launch(ready, settings):
+    settings.FRONTEND_URL = 'http://localhost:3000'
+    assert any('FRONTEND_URL' in m for lvl, m in collect() if lvl == 'BLOCKER')
 
 
 def test_nothing_to_book_is_a_blocker(settings):

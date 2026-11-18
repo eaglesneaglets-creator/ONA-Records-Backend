@@ -55,6 +55,7 @@ from .models import SLOT_HOLDING_STATUSES, BookingStatus, StudioBooking, constra
 from .money import with_paid
 from .serializers import BookingSerializer
 from .views import SlotTaken
+from core.business import rules
 
 TZ = ZoneInfo(settings.TIME_ZONE)
 
@@ -217,10 +218,9 @@ def _credit_fields(name, body, held) -> dict:
     a customer's own cancellation does (apps/payments/credit.py reads it)."""
     from datetime import timedelta
 
-    from django.conf import settings
     if name != 'cancel' or not body.get('keep_as_credit') or held <= 0:
         return {}
-    until = timezone.localdate() + timedelta(days=settings.DEPOSIT_CREDIT_DAYS)
+    until = timezone.localdate() + timedelta(days=rules().deposit_credit_days)
     return {'credit_pesewas': held, 'credit_until': until.isoformat()}
 
 

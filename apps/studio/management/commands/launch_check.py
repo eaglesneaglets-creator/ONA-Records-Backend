@@ -13,6 +13,8 @@ It reads only settings and the live catalogue/FAQ — it changes nothing.
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
+from core.business import rules
+
 PLACEHOLDER_MARKERS = ('PLACEHOLDER', 'lorem ipsum', 'replace with a real')
 
 
@@ -53,6 +55,10 @@ def collect() -> list[tuple[str, str]]:
                                'the contact page and privacy policy have no way to reach ONA.'))
 
     # ── Settings ────────────────────────────────────────────────────────
+    site = getattr(settings, 'FRONTEND_URL', '')
+    if not site.startswith('https://') or 'localhost' in site:
+        out.append(('BLOCKER', f'FRONTEND_URL is {site!r}: email links and the Paystack return '
+                               'address would not reach the live website.'))
     if settings.DEBUG:
         out.append(('BLOCKER', 'DEBUG is on.'))
     if settings.ADMIN_URL.strip('/') == 'admin':
@@ -76,15 +82,21 @@ def collect() -> list[tuple[str, str]]:
             == 'production':
         out.append(('BLOCKER', 'PAYSTACK_SECRET_KEY is a TEST key on production - customers would '
                                '"pay" and no money would arrive. Use the sk_live_ key.'))
+    # Business rules: staff's saved Business settings, else the environment.
+    biz = rules()
     # OQ3 answered (Nov 2026): 0% on studio sessions, 10% on marketplace jobs.
-    if getattr(settings, 'STUDIO_COMMISSION_PERCENT', 0) != 0:
+    if biz.studio_commission_percent != 0:
         out.append(('WARN', 'STUDIO_COMMISSION_PERCENT is not 0, but ONA charges no commission '
                             'on studio sessions.'))
-    for key, what in (('INVOICE_CONTACT', "the studio manager's name, phone and email"),
-                      ('INVOICE_BANK_DETAILS', 'the bank account for transfers'),
-                      ('INVOICE_TIN', "ONA's TIN")):
-        if not getattr(settings, key, ''):
-            out.append(('WARN', f'{key} is empty: invoices leave out {what}.'))
+    for key, value, what in (('INVOICE_CONTACT', biz.invoice_contact, "the studio manager's name, phone and email"),
+                             ('INVOICE_BANK_DETAILS', biz.invoice_bank_details, 'the bank account for transfers'),
+                             ('INVOICE_TIN', biz.invoice_tin, "ONA's TIN")):
+        if not value:
+            out.append(('WARN', f'{key} is empty (Business settings > Invoices): invoices leave out {what}.'))
+    if biz.tax_enabled and not biz.taxes:
+        out.append(('BLOCKER', 'Tax is switched on but no tax lines are set (Business settings > Tax).'))
+    if biz.tax_enabled and not biz.invoice_tin:
+        out.append(('BLOCKER', 'Tax is switched on but there is no TIN: a tax invoice must show it.'))
     return out
 
 

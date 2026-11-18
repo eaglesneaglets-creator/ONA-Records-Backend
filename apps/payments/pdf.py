@@ -28,6 +28,7 @@ from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen.canvas import Canvas
 
 from apps.payments.money import format_ghs
+from core.business import percent_text, rules, tax_breakdown
 
 RED = HexColor('#C90007')
 BLUE = HexColor('#00108F')
@@ -40,7 +41,7 @@ LOGO = Path(__file__).resolve().parent / 'assets' / 'ona-icon.png'
 
 def _issuer() -> tuple[str, str]:
     # Read at render time: settings, not code, carry ONA's legal details.
-    return settings.INVOICE_BUSINESS_NAME, settings.INVOICE_ADDRESS
+    return rules().invoice_business_name, rules().invoice_address
 
 W, H = A4
 LEFT = 20 * mm
@@ -71,7 +72,7 @@ def _header(c: Canvas, kind: str, number: str, issued) -> float:
     c.setFont('Helvetica', 9)
     c.setFillColor(DIM)
     name, address = _issuer()
-    tin = f' · TIN {settings.INVOICE_TIN}' if settings.INVOICE_TIN else ''
+    tin = f' · TIN {rules().invoice_tin}' if rules().invoice_tin else ''
     c.drawString(LEFT + 18 * mm, y - 1 * mm, f'{name} · {address}{tin}')
 
     c.setFillColor(RED)
@@ -103,7 +104,11 @@ def _rule(c: Canvas, y: float) -> None:
 def _footer(c: Canvas, note: str) -> None:
     c.setFillColor(DIM)
     c.setFont('Helvetica', 8.5)
-    c.drawString(LEFT, 20 * mm, note)
+    # Wrapped to the margins and stacked upwards, so a longer note (tax, a
+    # changed notice period) never runs off the page.
+    lines = _wrap(note, 'Helvetica', 8.5, RIGHT - LEFT)
+    for i, text in enumerate(lines):
+        c.drawString(LEFT, (20 + 4 * (len(lines) - 1 - i)) * mm, text)
     c.drawString(LEFT, 15 * mm, 'Questions about this document? Reply to your booking email '
                                 'and quote the reference above.')
 
@@ -135,7 +140,8 @@ def render_invoice(invoice) -> bytes:
     c = _canvas(buf, f'Invoice {invoice.number}')
     # A revised invoice says so, dated when it was revised (Task 15).
     revised = invoice.revision > 1 and invoice.revised_at is not None
-    y = _header(c, 'REVISED INVOICE' if revised else 'INVOICE', invoice.number,
+    kind = 'TAX INVOICE' if invoice.tax_rates else 'INVOICE'
+    y = _header(c, f'REVISED {kind}' if revised else kind, invoice.number,
                 invoice.revised_at if revised else invoice.issued_at)
 
     _pair(c, LEFT, y, 'Billed to', invoice.customer_name)
@@ -191,10 +197,21 @@ def render_invoice(invoice) -> bytes:
     elif paid:
         status_line = f'Paid {format_ghs(paid)} · balance {format_ghs(invoice.total_pesewas - paid)}'
     else:
-        status_line = (f'{settings.BOOKING_DEPOSIT_PERCENT}% deposit {format_ghs(deposit)} '
+        status_line = (f'{rules().booking_deposit_percent}% deposit {format_ghs(deposit)} '
                        'secures the booking')
     c.drawRightString(RIGHT, y - 6 * mm, status_line)
-    y = _payment_block(c, y - 18 * mm)
+    y -= 6 * mm
+    if invoice.tax_rates:
+        # Prices include tax: show what the total is made of.
+        net, parts = tax_breakdown(invoice.total_pesewas, invoice.tax_rates)
+        rows = [('Amount before tax', net)] + [
+            (f"{p['name']} ({percent_text(p['basis_points'])})", p['amount_pesewas']) for p in parts]
+        y -= 2 * mm
+        for label, amount in rows:
+            y -= 4.5 * mm
+            c.drawRightString(RIGHT - 45 * mm, y, label)
+            c.drawRightString(RIGHT, y, format_ghs(amount))
+    y = _payment_block(c, y - 12 * mm)
 
     _footer(c, 'All amounts in Ghana cedis (GHS). Deposits and cancellations follow ONA\'s '
                'booking terms (onarecords: /legal/terms).')
@@ -205,18 +222,18 @@ def render_invoice(invoice) -> bytes:
 
 def _payment_block(c: Canvas, y: float) -> float:
     """How to pay, and who to ask — ONA's invoice details (settings)."""
-    fee = settings.PAYSTACK_FEE_BASIS_POINTS
+    fee = rules().paystack_fee_basis_points
     lines = [
         'HOW TO PAY',
         'Deposit to secure the booking; the balance before or on the day of the session.',
         'Mobile Money: from your bookings page, through Paystack'
         + (f' (a {fee // 100}.{fee % 100:02d}% processing fee is added at checkout).'
-           if settings.PAYSTACK_PASS_FEE_TO_CUSTOMER and fee else '.'),
+           if rules().pass_paystack_fee and fee else '.'),
     ]
-    if settings.INVOICE_BANK_DETAILS:
-        lines.append(f'Bank transfer: {settings.INVOICE_BANK_DETAILS} — quote the booking reference.')
-    if settings.INVOICE_CONTACT:
-        lines.append(f'Questions: {settings.INVOICE_CONTACT}')
+    if rules().invoice_bank_details:
+        lines.append(f'Bank transfer: {rules().invoice_bank_details} — quote the booking reference.')
+    if rules().invoice_contact:
+        lines.append(f'Questions: {rules().invoice_contact}')
     for i, text in enumerate(lines):
         c.setFont('Helvetica-Bold' if i == 0 else 'Helvetica', 8.5 if i == 0 else 9)
         c.setFillColor(DIM if i == 0 else INK)
@@ -264,8 +281,12 @@ def render_receipt(receipt) -> bytes:
         c.drawString(LEFT, y - 21 * mm, 'Total charged')
         c.drawRightString(RIGHT, y - 21 * mm, format_ghs(txn.amount_pesewas + txn.fee_pesewas))
 
-    _footer(c, 'Covered by ONA\'s booking terms: deposits are not refunded; with 48 hours\' '
-               'notice they carry over to a new date.')
+    invoice = getattr(booking, 'invoice', None)
+    tax_note = (f' Prices include tax, itemised on invoice {invoice.number}.'
+                if invoice is not None and invoice.tax_rates else '')
+    _footer(c, 'Covered by ONA\'s booking terms: deposits are not refunded; with '
+               f'{rules().free_cancellation_hours} hours\' notice they carry over to a new date.'
+               + tax_note)
     c.showPage()
     c.save()
     return buf.getvalue()

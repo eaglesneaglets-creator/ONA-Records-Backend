@@ -18,6 +18,7 @@ from rest_framework import serializers
 from .availability import STUDIO_TZ, always_open, close_hour, is_free, open_hour
 from .models import BookingStatus, Engineer, Package, Room, Service, StudioBooking
 from .pricing import MAX_QUANTITY, PricingError, quote
+from core.business import rules
 
 
 class RoomSerializer(serializers.ModelSerializer):
@@ -81,7 +82,7 @@ MIN_HOURS, MAX_HOURS = 1, 12
 # Slot-squatting defence while bookings hold a slot without payment (until
 # Phase 2 adds payment and expiry of stale holds). A customer may hold at
 # most this many pending bookings, no further ahead than this.
-MAX_OPEN_PENDING = 3
+MAX_OPEN_PENDING = 3  # the default; staff can change it (core.business.rules().max_open_unpaid)
 MAX_DAYS_AHEAD = 90
 
 
@@ -256,7 +257,7 @@ class BookingCreateSerializer(serializers.Serializer):
         open_pending = StudioBooking.objects.filter(
             customer=customer, status=BookingStatus.PENDING, end_at__gt=timezone.now(),
         ).count()
-        if open_pending >= MAX_OPEN_PENDING:
+        if open_pending >= rules().max_open_unpaid:
             raise serializers.ValidationError(
                 f'You already have {open_pending} unpaid bookings. Pay the deposit on one, '
                 'or cancel one, before adding more.')
@@ -284,7 +285,7 @@ class BookingCreateSerializer(serializers.Serializer):
         open_pending = StudioBooking.objects.filter(
             customer=customer, status=BookingStatus.PENDING, end_at__gt=timezone.now(),
         ).count()
-        if open_pending >= MAX_OPEN_PENDING:
+        if open_pending >= rules().max_open_unpaid:
             raise serializers.ValidationError(
                 f'You already have {open_pending} unpaid bookings. Pay the deposit on one, '
                 'or cancel one, before adding more.')

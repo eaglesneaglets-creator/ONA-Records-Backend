@@ -18,9 +18,10 @@ from django.utils import timezone
 from . import messages
 from .models import Kind
 from .sending import claim, deliver, skip
+from core.business import rules
 
 # How long before a session the reminder goes out.
-REMINDER_HOURS = 24
+REMINDER_HOURS = 24  # the default; staff can change it (rules().reminder_hours_before)
 # A booking made this recently has a fresh confirmation in the inbox; a
 # reminder on top of it is noise.
 REMINDER_MIN_AGE = timedelta(hours=6)
@@ -112,7 +113,7 @@ def send_due_reminders() -> int:
     due = StudioBooking.objects.filter(
         status__in=SLOT_HOLDING_STATUSES,
         start_at__gt=now,
-        start_at__lte=now + timedelta(hours=REMINDER_HOURS),
+        start_at__lte=now + timedelta(hours=rules().reminder_hours_before),
         created_at__lte=now - REMINDER_MIN_AGE,
     ).values_list('pk', 'start_at')
     sent_keys = set(NotificationLog.objects.filter(

@@ -25,6 +25,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from .models import BlockKind, CalendarBlock, SLOT_HOLDING_STATUSES, StudioBooking
+from core.business import rules
 
 STUDIO_TZ = ZoneInfo(settings.TIME_ZONE)
 
@@ -35,11 +36,11 @@ SLOT_MINUTES = 60
 # 0 and 24 for ONA: "24/7, by prior booking only"), read at call time so a
 # change needs no code. 0–24 means sessions may also run past midnight.
 def open_hour() -> int:
-    return settings.STUDIO_OPEN_HOUR
+    return rules().studio_open_hour
 
 
 def close_hour() -> int:
-    return settings.STUDIO_CLOSE_HOUR
+    return rules().studio_close_hour
 
 
 def always_open() -> bool:

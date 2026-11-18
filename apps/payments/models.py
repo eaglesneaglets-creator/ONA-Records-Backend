@@ -256,6 +256,10 @@ class Invoice(UUIDPrimaryKeyMixin):
     # and is revised in place — it is a request for payment, and nothing has
     # been paid against it yet. Once a payment succeeds it is frozen for good
     # (apps/payments/documents.py::revise_invoice refuses).
+    # Taxes this invoice's total INCLUDES, frozen at issue (prices include tax,
+    # owner 2026-11-18): [{name, basis_points}]. Empty when tax was off. A
+    # later rate change never touches an issued invoice, revised or not.
+    tax_rates = models.JSONField(default=list, blank=True)
     revision = models.PositiveSmallIntegerField(default=1)
     revised_at = models.DateTimeField(null=True, blank=True)
 

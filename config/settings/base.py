@@ -222,6 +222,10 @@ PAYSTACK_FEE_BASIS_POINTS = config('PAYSTACK_FEE_BASIS_POINTS', default=195, cas
 BOOKING_DEPOSIT_PERCENT = config('BOOKING_DEPOSIT_PERCENT', default=50, cast=int)
 UNPAID_HOLD_MINUTES = config('UNPAID_HOLD_MINUTES', default=60, cast=int)
 DEPOSIT_CREDIT_DAYS = config('DEPOSIT_CREDIT_DAYS', default=30, cast=int)
+MAX_OPEN_UNPAID_BOOKINGS = config('MAX_OPEN_UNPAID_BOOKINGS', default=3, cast=int)
+REMINDER_HOURS_BEFORE = config('REMINDER_HOURS_BEFORE', default=24, cast=int)
+# The values above are the DEFAULTS: once staff save Business settings in the
+# console, those win (core/business.py). Invoice details below likewise.
 # Marketplace jobs (v0.3+). Studio sessions carry none: STUDIO_COMMISSION_PERCENT = 0.
 MARKETPLACE_COMMISSION_PERCENT = config('MARKETPLACE_COMMISSION_PERCENT', default=10, cast=int)
 

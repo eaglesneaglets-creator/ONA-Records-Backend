@@ -46,6 +46,7 @@ class TsTzRange(Func):
 from apps.payments.money import format_ghs  # noqa: E402
 from core.mixins.soft_delete import AllObjectsManager, SoftDeleteManager, SoftDeleteMixin
 from core.mixins.timestamp import TimestampMixin, UUIDPrimaryKeyMixin
+from core.business import rules
 
 
 class CatalogueQuerySet(models.QuerySet):
@@ -364,7 +365,6 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
         """
         from datetime import timedelta
 
-        from django.conf import settings
         from django.utils import timezone
 
         from .money import net_paid
@@ -373,7 +373,7 @@ class StudioBooking(UUIDPrimaryKeyMixin, TimestampMixin, SoftDeleteMixin):
             return False
         if net_paid(self) <= 0:
             return True
-        return self.start_at - now >= timedelta(hours=settings.FREE_CANCELLATION_HOURS)
+        return self.start_at - now >= timedelta(hours=rules().free_cancellation_hours)
 
     @property
     def duration_minutes(self) -> int:

@@ -54,6 +54,7 @@ from .ledger import LedgerError, mark_failed, mark_succeeded, open_transaction
 from .manual import outstanding
 from .money import deposit_pesewas, format_ghs, pass_on_fee
 from .models import Provider, Transaction, TransactionStatus
+from core.business import rules
 
 logger = logging.getLogger(__name__)
 
@@ -79,13 +80,13 @@ class CheckoutRefused(Exception):
 # ---------------------------------------------------------------------------
 
 def deposit_for(booking) -> int:
-    return deposit_pesewas(booking.total_pesewas, settings.BOOKING_DEPOSIT_PERCENT)
+    return deposit_pesewas(booking.total_pesewas, rules().booking_deposit_percent)
 
 
 def fee_for(amount_pesewas: int) -> int:
-    if not settings.PAYSTACK_PASS_FEE_TO_CUSTOMER:
+    if not rules().pass_paystack_fee:
         return 0
-    return pass_on_fee(amount_pesewas, settings.PAYSTACK_FEE_BASIS_POINTS)
+    return pass_on_fee(amount_pesewas, rules().paystack_fee_basis_points)
 
 
 @dataclass(frozen=True)
@@ -120,7 +121,7 @@ def payment_options(booking) -> list[PaymentOption]:
         return []
     due_now = deposit_for(booking) - net_paid(booking)
     if 0 < due_now < owed:
-        return [PaymentOption('deposit', f'{settings.BOOKING_DEPOSIT_PERCENT}% deposit',
+        return [PaymentOption('deposit', f'{rules().booking_deposit_percent}% deposit',
                               due_now, fee_for(due_now)),
                 PaymentOption('full', 'Pay in full', owed, fee_for(owed))]
     kind, label = ('balance', 'Balance') if net_paid(booking) > 0 else ('full', 'Pay in full')
@@ -339,10 +340,10 @@ def release_unpaid(now=None) -> int:
     from apps.studio.models import StudioBooking
     from apps.studio.money import with_paid
 
-    if not paystack.is_configured() or not settings.UNPAID_HOLD_MINUTES:
+    if not paystack.is_configured() or not rules().unpaid_hold_minutes:
         return 0
     now = now or timezone.now()
-    cutoff = now - timedelta(minutes=settings.UNPAID_HOLD_MINUTES)
+    cutoff = now - timedelta(minutes=rules().unpaid_hold_minutes)
     candidates = with_paid(StudioBooking.objects.filter(
         status=BookingStatus.PENDING, created_by__isnull=True, created_at__lt=cutoff))
     released = 0
@@ -360,7 +361,7 @@ def release_unpaid(now=None) -> int:
             locked.status = BookingStatus.CANCELLED
             locked.save(update_fields=['status', 'updated_at'])
             AuditLog.record('booking.released_unpaid', target=locked, reference=locked.reference,
-                            hold_minutes=settings.UNPAID_HOLD_MINUTES)
+                            hold_minutes=rules().unpaid_hold_minutes)
             notify_booking(locked, Kind.BOOKING_CANCELLED)
         released += 1
     return released

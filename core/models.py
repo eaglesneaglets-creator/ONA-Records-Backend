@@ -80,6 +80,7 @@ class AuditLog(models.Model):
 
         # Site details
         CONTACT_UPDATED = 'content.contact_updated', 'Contact details updated'
+        BUSINESS_SETTINGS_UPDATED = 'business.settings_updated', 'Business settings changed'
 
         # Identity masking — unmasking is a privileged act and is recorded.
         IDENTITIES_REVEALED = 'project.identities_revealed', 'Identities revealed to both parties'
@@ -190,3 +191,61 @@ class AuditLog(models.Model):
                 'Audit write failed: action=%s actor=%s', action, getattr(actor, 'pk', None),
             )
             return None
+
+
+class BusinessSettings(models.Model):
+    """
+    ONA's business rules, edited by staff in the console (Business settings).
+
+    One row (pk=1). Until staff save it the first time it does not exist and
+    every rule comes from the environment (config/settings/base.py), so a
+    deploy never changes behaviour on its own. Read it through
+    core.business.rules(), never directly: that is where the fallback and
+    the cache live. Every change is in the AuditLog.
+    """
+
+    SINGLETON_PK = 1
+
+    # Bookings and payment
+    booking_deposit_percent = models.PositiveSmallIntegerField()
+    unpaid_hold_minutes = models.PositiveIntegerField()
+    free_cancellation_hours = models.PositiveIntegerField()
+    deposit_credit_days = models.PositiveIntegerField()
+    max_open_unpaid = models.PositiveSmallIntegerField()
+    reminder_hours_before = models.PositiveSmallIntegerField()
+    # Studio hours (0-24; 0 and 24 mean round the clock)
+    studio_open_hour = models.PositiveSmallIntegerField()
+    studio_close_hour = models.PositiveSmallIntegerField()
+    # Fees and commission
+    pass_paystack_fee = models.BooleanField()
+    paystack_fee_basis_points = models.PositiveIntegerField()
+    studio_commission_percent = models.PositiveSmallIntegerField()
+    marketplace_commission_percent = models.PositiveSmallIntegerField()
+    # Tax: prices INCLUDE tax (owner, 2026-11-18); invoices show the split.
+    tax_enabled = models.BooleanField(default=False)
+    taxes = models.JSONField(default=list, blank=True,
+                             help_text='[{"name": "VAT", "basis_points": 1500}] (1500 = 15%).')
+    # Invoice details
+    invoice_business_name = models.CharField(max_length=200)
+    invoice_address = models.CharField(max_length=300, blank=True)
+    invoice_tin = models.CharField(max_length=40, blank=True)
+    invoice_contact = models.CharField(max_length=300, blank=True)
+    invoice_bank_details = models.CharField(max_length=300, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        verbose_name = 'business settings'
+        verbose_name_plural = 'business settings'
+
+    def __str__(self) -> str:
+        return 'ONA business settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = self.SINGLETON_PK
+        super().save(*args, **kwargs)
+        from core.business import forget
+        forget()
+        transaction.on_commit(forget)

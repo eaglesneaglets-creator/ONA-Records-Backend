@@ -23,6 +23,7 @@ from apps.studio.catalogue_admin import (
     ServiceAdminViewSet,
 )
 from apps.studio.staff import StaffBookingViewSet, StaffOverviewView, StaffSetupView
+from core.business_api import BusinessSettingsAdminView
 
 app_name = 'adminapi'
 
@@ -47,5 +48,6 @@ urlpatterns = [
     path('overview/', StaffOverviewView.as_view(), name='overview'),
     path('setup/', StaffSetupView.as_view(), name='setup'),
     path('contact/', ContactAdminView.as_view(), name='contact'),
+    path('business/', BusinessSettingsAdminView.as_view(), name='business'),
     *router.urls,
 ]

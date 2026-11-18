@@ -137,3 +137,12 @@ if SENTRY_DSN:
 # local-simulation hook, never a production knob).
 if not PAYSTACK_API_BASE.startswith('https://'):  # noqa: F405
     raise ImproperlyConfigured('PAYSTACK_API_BASE must be https in production.')  # noqa: F405
+
+# Every email link (verify, reset, bookings) and Paystack's return address are
+# built from FRONTEND_URL. Its default is http://localhost:3000, so a deploy
+# that forgets it emails customers links to nowhere. Refuse to start instead.
+if not FRONTEND_URL.startswith('https://') or 'localhost' in FRONTEND_URL or '127.0.0.1' in FRONTEND_URL:  # noqa: F405
+    raise ImproperlyConfigured(
+        'FRONTEND_URL must be the public https address of the website (it is used in every '
+        f'email link and the Paystack return address), not {FRONTEND_URL!r}.')  # noqa: F405
+FRONTEND_URL = FRONTEND_URL.rstrip('/')  # noqa: F405
