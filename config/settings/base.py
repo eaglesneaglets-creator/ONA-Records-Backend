@@ -140,6 +140,9 @@ REST_FRAMEWORK = {
         # Identity checks: each call goes on to the KYC service. Generous
         # enough for retaking photos, small enough to stop a loop.
         'kyc': '120/hour',
+        # Password changes: slows guessing the current password from a
+        # signed-in (possibly stolen) session.
+        'account': '20/hour',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.handler.api_exception_handler',
 }

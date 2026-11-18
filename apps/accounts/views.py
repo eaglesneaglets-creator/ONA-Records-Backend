@@ -23,12 +23,14 @@ from rest_framework import status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
-from rest_framework.throttling import AnonRateThrottle
+from rest_framework.throttling import AnonRateThrottle, ScopedRateThrottle
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core import lockout
+from core.models import AuditLog
 
 from .serializers import (
+    ChangePasswordSerializer,
     EmptySerializer,
     LoginSerializer,
     LogoutSerializer,
@@ -170,6 +172,32 @@ class MeView(GenericAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data)
+
+
+class ChangePasswordView(GenericAPIView):
+    """
+    POST /api/v1/auth/password/ — change the password while signed in.
+
+    Tokens carry a hash of the password (SIMPLE_JWT CHECK_REVOKE_TOKEN), so
+    the change itself ends every existing session, on every device. This one
+    carries on with the fresh pair returned here.
+    """
+
+    serializer_class = ChangePasswordSerializer
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'account'
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        user.set_password(serializer.validated_data['new_password'])
+        user.save(update_fields=['password'])
+        lockout.clear(user.email)
+        AuditLog.record(AuditLog.Action.PASSWORD_CHANGED, actor=user, target=user, request=request)
+        return Response({'detail': 'Password changed. Other devices have been signed out.',
+                         'tokens': _tokens_for(user)})
 
 
 class VerifyEmailView(GenericAPIView):

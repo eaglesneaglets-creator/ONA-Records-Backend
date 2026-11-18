@@ -23,7 +23,7 @@ def _has_marker(*texts) -> bool:
 
 def collect() -> list[tuple[str, str]]:
     """[(level, message)] - level is 'BLOCKER' or 'WARN'."""
-    from apps.content.models import Faq
+    from apps.content.models import ContactDetails, Faq
     from apps.studio.models import Engineer, Package, Room, Service
 
     out: list[tuple[str, str]] = []
@@ -48,6 +48,10 @@ def collect() -> list[tuple[str, str]]:
         if _has_marker(faq.question, faq.answer):
             out.append(('BLOCKER', f'Placeholder text in the FAQ "{faq.question}".'))
 
+    if ContactDetails.load().is_empty:
+        out.append(('BLOCKER', 'Contact details are empty (Questions & contact in the console): '
+                               'the contact page and privacy policy have no way to reach ONA.'))
+
     # ── Settings ────────────────────────────────────────────────────────
     if settings.DEBUG:
         out.append(('BLOCKER', 'DEBUG is on.'))
@@ -56,6 +60,9 @@ def collect() -> list[tuple[str, str]]:
     if 'console' in settings.EMAIL_BACKEND or 'locmem' in settings.EMAIL_BACKEND:
         out.append(('BLOCKER', f'Email is not sent ({settings.EMAIL_BACKEND}). Customers would '
                                'never receive confirmations or verification links.'))
+    elif not getattr(settings, 'EMAIL_HOST', ''):
+        out.append(('BLOCKER', 'EMAIL_HOST is not set: every email fails, including verification '
+                               'links. Set EMAIL_HOST, EMAIL_HOST_USER and EMAIL_HOST_PASSWORD.'))
     if not getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True):
         out.append(('BLOCKER', 'BOOKING_REQUIRES_VERIFIED_EMAIL is off.'))
     if not getattr(settings, 'CELERY_BROKER_URL', ''):

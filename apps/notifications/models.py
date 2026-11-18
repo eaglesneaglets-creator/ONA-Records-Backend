@@ -32,6 +32,7 @@ class Kind(models.TextChoices):
     REMINDER = 'reminder', 'Session reminder'
     VERIFY_EMAIL = 'verify_email', 'Verify email address'
     PASSWORD_RESET = 'password_reset', 'Password reset'
+    STAFF_INVITED = 'staff_invited', 'Added to the ONA staff console'
 
 
 class Channel(models.TextChoices):

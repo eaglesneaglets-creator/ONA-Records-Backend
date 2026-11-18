@@ -48,10 +48,20 @@ def test_staging_email_backend_replaces_all_real_recipients(monkeypatch):
 
 
 @override_settings(STAGING_EMAIL_REDIRECT_TO='')
-def test_staging_email_backend_refuses_to_send_without_redirect(monkeypatch):
+def test_staging_delivers_to_real_recipients_with_a_tagged_subject(monkeypatch):
     monkeypatch.setattr(SMTPBackend, 'send_messages', lambda self, messages: len(messages))
+    message = EmailMessage('Confirm your email', 'Body', to=['new-user@example.com'])
 
-    with pytest.raises(ValueError, match='Refusing to send'):
-        RedirectingEmailBackend().send_messages([
-            EmailMessage('Subject', 'Body', to=['customer@example.com'])
-        ])
+    assert RedirectingEmailBackend().send_messages([message]) == 1
+    assert message.to == ['new-user@example.com']
+    assert message.subject == '[STAGING] Confirm your email'
+    assert 'X-Original-To' not in message.extra_headers
+    assert message.body == 'Body'
+
+
+@override_settings(STAGING_EMAIL_REDIRECT_TO='')
+def test_the_staging_tag_is_never_doubled(monkeypatch):
+    monkeypatch.setattr(SMTPBackend, 'send_messages', lambda self, messages: len(messages))
+    message = EmailMessage('[STAGING] Booking confirmed', 'Body', to=['a@example.com'])
+    RedirectingEmailBackend().send_messages([message])
+    assert message.subject == '[STAGING] Booking confirmed'

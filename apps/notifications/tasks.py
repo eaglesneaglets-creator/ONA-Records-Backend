@@ -152,6 +152,12 @@ def send_account_email(user_id: str, kind: str) -> str:
         token = default_token_generator.make_token(user)
         email = messages.account_created(
             user, f'{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}&welcome=1')
+    elif kind == Kind.STAFF_INVITED:
+        # A staff member added from the console chooses their own password
+        # through the reset flow, like a customer ONA set up at the desk.
+        token = default_token_generator.make_token(user)
+        email = messages.staff_invited(
+            user, f'{settings.FRONTEND_URL}/reset-password?uid={uid}&token={token}&welcome=1')
     else:
         raise ValueError(f'Unknown account email kind: {kind!r}')
     # No dedupe key for resets: asking twice is two legitimate emails. An

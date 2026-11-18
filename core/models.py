@@ -75,6 +75,11 @@ class AuditLog(models.Model):
         PROFESSIONAL_REJECTED = 'professional.rejected', 'Professional rejected'
         USER_SUSPENDED = 'user.suspended', 'Account suspended'
         USER_REACTIVATED = 'user.reactivated', 'Account reactivated'
+        PASSWORD_CHANGED = 'user.password_changed', 'Password changed'
+        STAFF_INVITED = 'staff.invited', 'Staff member added'
+
+        # Site details
+        CONTACT_UPDATED = 'content.contact_updated', 'Contact details updated'
 
         # Identity masking — unmasking is a privileged act and is recorded.
         IDENTITIES_REVEALED = 'project.identities_revealed', 'Identities revealed to both parties'

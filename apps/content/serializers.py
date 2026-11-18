@@ -1,6 +1,8 @@
 from rest_framework import serializers
 
-from .models import Faq
+from core.validators import clean_phone
+
+from .models import ContactDetails, Faq
 
 
 class FaqPublicSerializer(serializers.ModelSerializer):
@@ -25,3 +27,30 @@ class FaqAdminSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('An answer is required.')
         return value
+
+
+CONTACT_FIELDS = ('phone', 'whatsapp', 'email', 'address', 'directions_url')
+
+
+
+class ContactPublicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactDetails
+        fields = CONTACT_FIELDS
+        read_only_fields = fields
+
+
+class ContactAdminSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ContactDetails
+        fields = (*CONTACT_FIELDS, 'updated_at')
+        read_only_fields = ('updated_at',)
+
+    def validate_phone(self, value):
+        return clean_phone(value)
+
+    def validate_whatsapp(self, value):
+        return clean_phone(value)
+
+    def validate_address(self, value):
+        return value.strip()

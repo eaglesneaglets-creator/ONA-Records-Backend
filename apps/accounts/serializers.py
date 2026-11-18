@@ -21,6 +21,7 @@ from rest_framework_simplejwt.settings import api_settings
 from rest_framework_simplejwt.utils import get_md5_hash_password
 
 from core.serializers import MaskedUserSerializer
+from core.validators import clean_phone
 
 User = get_user_model()
 
@@ -215,6 +216,15 @@ class UserSerializer(MaskedUserSerializer):
         read_only_fields = ('id', 'display_name', 'role', 'email',
                             'public_ref', 'is_email_verified', 'date_joined')
 
+    def validate_first_name(self, value: str) -> str:
+        return value.strip()
+
+    def validate_last_name(self, value: str) -> str:
+        return value.strip()
+
+    def validate_phone(self, value: str) -> str:
+        return clean_phone(value)
+
     def get_must_verify_email(self, obj) -> bool:
         from django.conf import settings
         return bool(getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True)
@@ -248,6 +258,26 @@ class VerifyEmailSerializer(serializers.Serializer):
 
 class EmptySerializer(serializers.Serializer):
     """Documents endpoints that intentionally accept no request body."""
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """A signed-in person changes their password; the current one proves it is them."""
+
+    current_password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+    new_password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+        if not user.check_password(attrs['current_password']):
+            raise serializers.ValidationError({'current_password': 'That is not your current password.'})
+        if attrs['new_password'] == attrs['current_password']:
+            raise serializers.ValidationError(
+                {'new_password': 'Choose a password different from your current one.'})
+        try:
+            validate_password(attrs['new_password'], user=user)
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError({'new_password': list(exc.messages)}) from exc
+        return attrs
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):

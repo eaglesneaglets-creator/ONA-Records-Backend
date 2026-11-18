@@ -30,6 +30,7 @@ PUBLIC = [
     r'^api/v1/studio/(rooms|engineers|services|packages)/([0-9a-f-]+/)?$',
     r'^api/v1/studio/calendar/$',
     r'^api/v1/content/faqs/$',
+    r'^api/v1/content/contact/$',   # the public contact page; read-only
 ]
 
 

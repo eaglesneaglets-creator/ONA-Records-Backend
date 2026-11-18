@@ -92,14 +92,13 @@ if PAYSTACK_SECRET_KEY and not PAYSTACK_SECRET_KEY.startswith('sk_test_'):  # no
 S3_KEY_PREFIX = 'ona-staging'
 
 # ---------------------------------------------------------------------------
-# 7. Email — nothing reaches a real person
+# 7. Email — real delivery, every subject tagged [STAGING]
 # ---------------------------------------------------------------------------
-# Staging has copies of real bookings, which means real addresses. Sending
-# from staging means emailing customers about bookings that did not happen.
-# Everything is redirected to one inbox instead.
-# Never allow staging to select the production SMTP backend directly. This
-# backend still uses SMTP, but replaces every recipient with the controlled
-# staging inbox before handing the message off.
+# Staging holds test accounts only, so QA receives real emails and can test
+# signup, verification and booking end to end (owner, 2026-11-18). The
+# backend prefixes every subject with [STAGING].
+# Before ANY copy of production data reaches staging, set
+# STAGING_EMAIL_REDIRECT_TO: every message then goes to that one inbox.
 EMAIL_BACKEND = 'core.email_backends.RedirectingEmailBackend'
 STAGING_EMAIL_REDIRECT_TO = config('STAGING_EMAIL_REDIRECT_TO', default='')
 
@@ -121,6 +120,7 @@ REST_FRAMEWORK = {  # noqa: F405
         'booking': '200/hour',
         'payment': '200/hour',
         'kyc': '600/hour',
+        'account': '200/hour',
         'otp': '50/hour',
     },
 }

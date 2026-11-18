@@ -3,7 +3,7 @@
 import pytest
 from django.core.management import CommandError, call_command
 
-from apps.content.models import Faq
+from apps.content.models import ContactDetails, Faq
 from apps.studio.management.commands.launch_check import collect
 from apps.studio.models import Engineer, Room, Service
 
@@ -15,11 +15,13 @@ def ready(settings):
     settings.DEBUG = False
     settings.ADMIN_URL = 'staff-7f3a/'
     settings.EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+    settings.EMAIL_HOST = 'smtp.gmail.com'
     settings.BOOKING_REQUIRES_VERIFIED_EMAIL = True
     settings.CELERY_BROKER_URL = 'redis://x'
     settings.PAYSTACK_SECRET_KEY = 'sk_live_set'
     settings.STUDIO_COMMISSION_PERCENT = 10
     Faq.objects.all().delete()
+    ContactDetails.objects.update_or_create(pk=1, defaults={'phone': '030 000 0000'})
     Room.objects.create(name='Live Room', description='Real tracking room.', hourly_rate_pesewas=20000)
     Engineer.objects.create(name='Kojo', bio='Mix engineer.')
     Service.objects.create(name='Recording', base_price_pesewas=0, duration_minutes=60)
@@ -52,6 +54,11 @@ def test_unsafe_settings_are_blockers(ready, settings):
     blockers = ' '.join(m for lvl, m in collect() if lvl == 'BLOCKER')
     for needle in ('DEBUG', 'ADMIN_URL', 'Email is not sent', 'BOOKING_REQUIRES_VERIFIED_EMAIL'):
         assert needle in blockers
+
+
+def test_smtp_without_a_host_is_a_blocker(ready, settings):
+    settings.EMAIL_HOST = ''
+    assert any('EMAIL_HOST is not set' in m for lvl, m in collect() if lvl == 'BLOCKER')
 
 
 def test_nothing_to_book_is_a_blocker(settings):

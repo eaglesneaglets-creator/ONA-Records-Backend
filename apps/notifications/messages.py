@@ -159,5 +159,10 @@ def account_created(user, link: str) -> Email:
                    {'name': _name(user), 'link': link, 'email': user.email})
 
 
+def staff_invited(user, link: str) -> Email:
+    return _render('staff_invited', 'You have been added to the ONA Records staff console',
+                   {'name': _name(user), 'link': link, 'email': user.email})
+
+
 def password_reset(user, link: str) -> Email:
     return _render('password_reset', 'Reset your password', {'name': _name(user), 'link': link})

@@ -11,7 +11,8 @@ from django.urls import path
 from rest_framework.routers import SimpleRouter
 
 from apps.accounts.staff import CustomerStaffViewSet
-from apps.content.views import FaqAdminViewSet
+from apps.accounts.team import StaffViewSet
+from apps.content.views import ContactAdminView, FaqAdminViewSet
 from apps.kyc.staff import KycReviewViewSet
 from apps.marketplace.views import JobAdminViewSet, ProfessionalAdminViewSet
 from apps.payments.staff import TransactionStaffViewSet
@@ -40,9 +41,11 @@ router.register('packages', PackageAdminViewSet, basename='package')
 router.register('faqs', FaqAdminViewSet, basename='faq')
 # Identity checks, decided in the shared KYC service.
 router.register('kyc', KycReviewViewSet, basename='kyc')
+router.register('staff', StaffViewSet, basename='staff')
 
 urlpatterns = [
     path('overview/', StaffOverviewView.as_view(), name='overview'),
     path('setup/', StaffSetupView.as_view(), name='setup'),
+    path('contact/', ContactAdminView.as_view(), name='contact'),
     *router.urls,
 ]
