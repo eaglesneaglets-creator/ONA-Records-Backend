@@ -48,6 +48,7 @@ LOCAL_APPS = [
     'apps.notifications',  # pluggable channels
     'apps.content',        # staff-edited site content (FAQ)
     'apps.kyc',            # identity checks, through the shared KYC service
+    'apps.engine',         # mirror of the studio calendar in the shared booking engine
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -246,6 +247,13 @@ KYC_API_URL = config('KYC_API_URL', default='')  # e.g. https://kyc-service-stag
 KYC_API_KEY = config('KYC_API_KEY', default='')
 KYC_WEBHOOK_SECRET = config('KYC_WEBHOOK_SECRET', default='')
 
+# The shared booking engine (repo: BookingAPI). Its `create_platform
+# ona-records` command prints the key. While ONA is in charge of bookings the
+# engine only mirrors ONA's calendar (apps/engine/sync.py); empty URL or key:
+# nothing is mirrored and nothing else changes.
+BOOKING_API_URL = config('BOOKING_API_URL', default='')  # e.g. https://booking-api-staging.up.railway.app
+BOOKING_API_KEY = config('BOOKING_API_KEY', default='')
+
 # SMS (not used in v0.1) — Hubtel's SMS API, independent of payments.
 HUBTEL_SMS_CLIENT_ID = config('HUBTEL_SMS_CLIENT_ID', default='')
 HUBTEL_SMS_CLIENT_SECRET = config('HUBTEL_SMS_CLIENT_SECRET', default='')
@@ -324,5 +332,11 @@ CELERY_BEAT_SCHEDULE = {
     'release-unpaid-bookings': {
         'task': 'apps.payments.tasks.release_unpaid_bookings',
         'schedule': 5 * 60,
+    },
+    # Compare ONA's calendar with the booking engine's mirror and repair it.
+    # Does nothing until BOOKING_API_URL and BOOKING_API_KEY are set.
+    'reconcile-booking-engine': {
+        'task': 'apps.engine.tasks.reconcile',
+        'schedule': 30 * 60,
     },
 }
