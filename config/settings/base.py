@@ -255,12 +255,14 @@ HUBTEL_SMS_SENDER_ID = config('HUBTEL_SMS_SENDER_ID', default='ONARecords')
 # File storage: an S3-compatible bucket (Railway Storage Buckets)
 # ---------------------------------------------------------------------------
 # All empty = uploads switched off (core/storage.py refuses them politely).
-# On Railway, reference the bucket's own variables: S3_BUCKET=${{Bucket.BUCKET}}.
-S3_BUCKET = config('S3_BUCKET', default='')
-S3_ENDPOINT_URL = config('S3_ENDPOINT_URL', default='')
-S3_ACCESS_KEY_ID = config('S3_ACCESS_KEY_ID', default='')
-S3_SECRET_ACCESS_KEY = config('S3_SECRET_ACCESS_KEY', default='')
-S3_REGION = config('S3_REGION', default='auto')
+# Connecting a Railway bucket to a service gives it BUCKET, ENDPOINT,
+# ACCESS_KEY_ID, SECRET_ACCESS_KEY and REGION; those are read when the S3_*
+# names are not set, so a connected bucket works with no extra variables.
+S3_BUCKET = config('S3_BUCKET', default=config('BUCKET', default=''))
+S3_ENDPOINT_URL = config('S3_ENDPOINT_URL', default=config('ENDPOINT', default=''))
+S3_ACCESS_KEY_ID = config('S3_ACCESS_KEY_ID', default=config('ACCESS_KEY_ID', default=''))
+S3_SECRET_ACCESS_KEY = config('S3_SECRET_ACCESS_KEY', default=config('SECRET_ACCESS_KEY', default=''))
+S3_REGION = config('S3_REGION', default=config('REGION', default='auto'))
 # 'virtual' (bucket name as subdomain) is what Railway buckets use; the
 # bucket's Credentials tab says if an older bucket needs 'path'.
 S3_ADDRESSING_STYLE = config('S3_ADDRESSING_STYLE', default='virtual')
