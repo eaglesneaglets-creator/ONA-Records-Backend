@@ -19,7 +19,7 @@ from .tokens import email_verification_token
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.utils import timezone
-from rest_framework import status
+from rest_framework import serializers, status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -313,6 +313,11 @@ class JourneyView(GenericAPIView):
         data = {k: request.data[k] for k in ('hidden', 'intent', 'welcomed', 'tour_seen')
                 if k in request.data}
         if 'hidden' in data:
-            data['hidden'] = bool(data['hidden'])
+            # Parsed like any DRF boolean: true/false, "true"/"false", 1/0.
+            # bool("false") is True, which would hide the guide when asked to show it.
+            try:
+                data['hidden'] = serializers.BooleanField().to_internal_value(data['hidden'])
+            except serializers.ValidationError:
+                return Response({'hidden': ['Must be true or false.']}, status=status.HTTP_400_BAD_REQUEST)
         update(request.user, data)
         return Response(customer_journey(request.user))

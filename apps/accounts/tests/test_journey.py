@@ -186,3 +186,27 @@ def test_setup_checklist_collapses_placeholder_lines_into_one_sentence():
         'Placeholder text on service "Mixing" - replace it in Studio & prices, or switch it off.',
     ])
     assert body == 'Still placeholder text: rooms Studio A, Mix Suite; service Mixing. Replace each one, or switch it off.'
+
+
+# ── Review fixes (2026-11-18) ─────────────────────────────────────────────
+
+@pytest.mark.parametrize('sent, dismissed', [('false', False), ('true', True), ('0', False), (1, True)])
+def test_hidden_is_parsed_as_a_boolean_not_by_truthiness(w, sent, dismissed):
+    # bool("false") is True: a client sending the string must not hide the guide.
+    c = as_(w['ama'])
+    r = c.post('/api/v1/auth/journey/', {'hidden': sent}, format='json')
+    assert r.status_code == 200 and r.data['dismissed'] is dismissed
+
+
+def test_hidden_that_is_not_a_boolean_is_refused(w):
+    r = as_(w['ama']).post('/api/v1/auth/journey/', {'hidden': 'maybe'}, format='json')
+    assert r.status_code == 400
+
+
+def test_only_customers_are_told_they_need_a_confirmed_email_to_book(w, settings):
+    settings.BOOKING_REQUIRES_VERIFIED_EMAIL = True   # as on staging/production
+    def verify_step(user):
+        steps = as_(user).get('/api/v1/auth/journey/').data['steps']
+        return next(s for s in steps if s['key'] == 'verify_email')['body']
+    assert 'before you can book' in verify_step(w['fresh'])          # unverified customer
+    assert 'before you can book' not in verify_step(w['staff'])      # staff never book themselves

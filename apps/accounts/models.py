@@ -125,6 +125,17 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.email
 
     @property
+    def must_verify_email_to_book(self) -> bool:
+        """
+        Booking needs a confirmed email (BOOKING_REQUIRES_VERIFIED_EMAIL) and
+        only customers book. The one rule behind the booking gate's banner
+        (UserSerializer.must_verify_email) and the journey's wording.
+        """
+        from django.conf import settings
+        return bool(getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True)
+                    and self.role == Role.CUSTOMER)
+
+    @property
     def full_name(self) -> str:
         return ' '.join(p for p in (self.first_name, self.last_name) if p)
 

@@ -80,12 +80,11 @@ def is_new(user) -> bool:
 
 
 def customer_journey(user) -> dict:
-    from django.conf import settings
 
     from apps.payments import paystack
 
     f = _facts(user)
-    must_verify = bool(getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True))
+    must_verify = user.must_verify_email_to_book  # customers only, like the booking gate
     unpaid = f['unpaid']
     upcoming = f['upcoming']
 

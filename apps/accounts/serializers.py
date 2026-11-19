@@ -226,9 +226,7 @@ class UserSerializer(MaskedUserSerializer):
         return clean_phone(value)
 
     def get_must_verify_email(self, obj) -> bool:
-        from django.conf import settings
-        return bool(getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True)
-                    and obj.role == 'customer' and not obj.is_email_verified)
+        return obj.must_verify_email_to_book and not obj.is_email_verified
 
 
 class PublicUserSerializer(MaskedUserSerializer):
