@@ -55,6 +55,8 @@ DEFAULT_FROM_EMAIL = 'ONA Records <dev@localhost>'
 # click a link from. Staging and production keep the base default (on);
 # pytest switches it on where it is the thing under test.
 BOOKING_REQUIRES_VERIFIED_EMAIL = config('BOOKING_REQUIRES_VERIFIED_EMAIL', default=False, cast=bool)
+# Same reason: E2E cannot take an ID photo and a selfie between signing up and booking.
+BOOKING_REQUIRES_IDENTITY_CHECK = config('BOOKING_REQUIRES_IDENTITY_CHECK', default=False, cast=bool)
 
 # Run tasks inline — no Redis or worker needed to develop.
 CELERY_TASK_ALWAYS_EAGER = True

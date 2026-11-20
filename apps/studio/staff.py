@@ -133,11 +133,24 @@ class StaffBookingDetailSerializer(StaffBookingSerializer):
     transactions = serializers.SerializerMethodField()
     history = serializers.SerializerMethodField()
     available_credits = serializers.SerializerMethodField()
+    customer_identity = serializers.SerializerMethodField()
 
     class Meta(StaffBookingSerializer.Meta):
         fields = StaffBookingSerializer.Meta.fields + ('transactions', 'history',
-                                                       'available_credits')
+                                                       'available_credits', 'customer_identity')
         read_only_fields = fields
+
+    def get_customer_identity(self, obj) -> dict | None:
+        """Where the customer's identity check stands, so staff can approve it
+        before the session (BOOKING_REQUIRES_IDENTITY_CHECK lets them book
+        once it is sent). None: they have never started one."""
+        from apps.kyc.models import IdentityStatus, current_check, is_verified
+        check = current_check(obj.customer)
+        if check is None:
+            return None
+        return {'verification_id': str(check.verification_id), 'status': check.status,
+                'status_display': IdentityStatus(check.status).label,
+                'verified': is_verified(obj.customer)}
 
     def get_available_credits(self, obj) -> list:
         """The customer's unexpired deposit credit — offered only on a booking

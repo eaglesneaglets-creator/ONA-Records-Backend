@@ -79,6 +79,49 @@ def is_new(user) -> bool:
     return user.date_joined >= timezone.now() - NEW_FOR
 
 
+def _identity_step(user) -> list[dict]:
+    """
+    "Verify your identity" — only while booking needs it
+    (user.must_send_identity_to_book), so the guide never asks for a check
+    nobody enforces or that the KYC service cannot take.
+
+    Done once the check is sent: that is what booking needs. The words say
+    where it stands — with ONA, verified, or what the person must do next.
+    """
+    if not user.must_send_identity_to_book:
+        return []
+    from apps.kyc.models import IdentityStatus, current_check, has_sent_check
+
+    check = current_check(user)
+    status = check.status if check else None
+    href = '/customer/verify'
+    if has_sent_check(user):
+        # Sent and waiting, or (latest or an earlier attempt) approved.
+        body = ('Sent. Someone at ONA is checking it — you can book in the meantime.'
+                if status in (IdentityStatus.SUBMITTED, IdentityStatus.IN_REVIEW)
+                else 'Verified. Thank you — you will not be asked again.')
+        return [{'key': 'verify_identity', 'title': 'Verify your identity', 'done': True,
+                 'body': body, 'href': href, 'cta': 'See your check'}]
+    if status == IdentityStatus.CHANGES_REQUESTED:
+        body = 'ONA asked for a change before they can confirm it'
+        body += f': {check.reason}' if check.reason else '.'
+        cta, urgent = 'See what to change', True
+    elif status == IdentityStatus.REJECTED:
+        body = 'Your last check was not approved'
+        body += f': {check.reason}' if check.reason else '.'
+        body += ' Start a new one to book.'
+        cta, urgent = 'Start a new check', True
+    elif status == IdentityStatus.DRAFT:
+        body = 'You started your check. Finish it and send it to ONA — you need it before you can book.'
+        cta, urgent = 'Finish your check', False
+    else:
+        body = ('A one-time check with your Ghana Card or passport and a selfie. About three '
+                'minutes on your phone, and you need it before you can book.')
+        cta, urgent = 'Verify your identity', False
+    return [{'key': 'verify_identity', 'title': 'Verify your identity', 'done': False,
+             'body': body, 'href': href, 'cta': cta, 'urgent': urgent}]
+
+
 def customer_journey(user) -> dict:
 
     from apps.payments import paystack
@@ -95,6 +138,7 @@ def customer_journey(user) -> dict:
          'body': ('We sent you a link. You need it before you can book.' if must_verify
                   else 'We sent you a link, so booking emails reach you.'),
          'action': 'resend_verification'},
+        *_identity_step(user),
         {'key': 'phone', 'title': 'Add your phone number', 'done': bool(user.phone),
          'body': 'So ONA can reach you about your session — the number you pay with by '
                  'Mobile Money works best.',

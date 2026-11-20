@@ -206,12 +206,17 @@ class UserSerializer(MaskedUserSerializer):
     # (settings.BOOKING_REQUIRES_VERIFIED_EMAIL) — the booking page shows a
     # resend banner only when it is.
     must_verify_email = serializers.SerializerMethodField()
+    # True when this customer may not book until they send an identity check
+    # (settings.BOOKING_REQUIRES_IDENTITY_CHECK) — the booking page then
+    # points them to /customer/verify.
+    must_verify_identity = serializers.SerializerMethodField()
 
     class Meta(MaskedUserSerializer.Meta):
         model = User
         fields = MaskedUserSerializer.Meta.fields + (
             'email', 'first_name', 'last_name', 'phone',
             'public_ref', 'is_email_verified', 'date_joined', 'must_verify_email',
+            'must_verify_identity',
         )
         read_only_fields = ('id', 'display_name', 'role', 'email',
                             'public_ref', 'is_email_verified', 'date_joined')
@@ -227,6 +232,10 @@ class UserSerializer(MaskedUserSerializer):
 
     def get_must_verify_email(self, obj) -> bool:
         return obj.must_verify_email_to_book and not obj.is_email_verified
+
+    def get_must_verify_identity(self, obj) -> bool:
+        from apps.kyc.models import has_sent_check
+        return obj.must_send_identity_to_book and not has_sent_check(obj)
 
 
 class PublicUserSerializer(MaskedUserSerializer):

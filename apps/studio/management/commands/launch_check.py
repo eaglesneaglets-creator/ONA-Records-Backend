@@ -71,6 +71,13 @@ def collect() -> list[tuple[str, str]]:
                                'links. Set EMAIL_HOST, EMAIL_HOST_USER and EMAIL_HOST_PASSWORD.'))
     if not getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True):
         out.append(('BLOCKER', 'BOOKING_REQUIRES_VERIFIED_EMAIL is off.'))
+    from apps.kyc import client as kyc
+    if not getattr(settings, 'BOOKING_REQUIRES_IDENTITY_CHECK', True):
+        out.append(('WARN', 'BOOKING_REQUIRES_IDENTITY_CHECK is off: customers can book without '
+                            'sending an identity check.'))
+    elif not kyc.is_configured():
+        out.append(('WARN', 'Booking asks for an identity check, but KYC_API_URL / KYC_API_KEY are '
+                            'not set, so the check is skipped and anyone can book.'))
     if not getattr(settings, 'CELERY_BROKER_URL', ''):
         out.append(('WARN', 'No Celery broker: emails send inline and session reminders do not '
                             'run on a schedule. Add Redis and a worker with CELERY_BEAT=1.'))
