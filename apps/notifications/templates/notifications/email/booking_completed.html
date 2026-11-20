@@ -1,0 +1,9 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}Your invoice and receipts stay on your bookings page.{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow_ok }}">Session complete</p>{% endblock %}
+{% block heading %}Thanks for the session, {{ name }}{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Thank you for recording with us. Your session {{ reference }} on {{ when }} is now marked as complete, and your invoice and receipts stay on your bookings page.</p>
+<p style="{{ s.p }}">Whenever you are ready for the next one, we will be here.</p>
+{% include "notifications/email/_button.html" with url=book_url label="Book your next session" %}
+{% endblock %}

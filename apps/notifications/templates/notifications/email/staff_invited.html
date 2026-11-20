@@ -1,0 +1,12 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}Choose a password to sign in to the staff console.{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow }}">Staff console</p>{% endblock %}
+{% block heading %}You have been added to the team{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, you now have access to the ONA Records staff console. From there you run bookings, payments, identity checks and the studio catalogue.</p>
+{% include "notifications/email/_rows.html" with rows=account_rows %}
+{% include "notifications/email/_button.html" with url=link label="Choose a password" %}
+<p style="{{ s.small }}">The link works once and expires in a few days. If it has expired, use “Forgot your password?” on the sign-in page. Not expecting this? Tell the studio manager.</p>
+{% include "notifications/email/_fallback.html" with url=link %}
+{% endblock %}
+{% block why %}You are receiving this because an ONA admin added you to the staff console.{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}Choose a password to see and manage the session we booked with you.{% endblock %}
+{% block heading %}Your account is ready{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, ONA Records has set up an account for you so you can see and manage the session we booked with you.</p>
+{% include "notifications/email/_rows.html" with rows=account_rows %}
+{% include "notifications/email/_button.html" with url=link label="Choose a password" %}
+<p style="{{ s.small }}">The link works once and expires in a few days. If it has expired, use “Forgot your password?” on the sign-in page. If you did not ask ONA to book anything, reply and we will close the account.</p>
+{% include "notifications/email/_fallback.html" with url=link %}
+{% endblock %}

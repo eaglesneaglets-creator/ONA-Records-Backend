@@ -1,0 +1,10 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}{{ amount }} refunded for {{ reference }}.{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow }}">Refund recorded</p>{% endblock %}
+{% block heading %}{{ amount }} refunded{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, ONA has refunded {{ amount }} for your booking {{ reference }} ({{ when }}).</p>
+{% if note %}{% include "notifications/email/_rows.html" with rows=refund_rows %}{% endif %}
+{% include "notifications/email/_button.html" with url=bookings_url label="View your booking" %}
+<p style="{{ s.small }}">If it has not reached you within a few days, reply to this email with the reference above and we will look into it.</p>
+{% endblock %}

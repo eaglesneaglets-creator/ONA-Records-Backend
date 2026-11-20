@@ -1,0 +1,9 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}New time: {{ when }}. The price has not changed.{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow }}">Booking {{ reference }}</p>{% endblock %}
+{% block heading %}Your session has moved{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, your session has a new time. The old time has been released, and the price has not changed.</p>
+{% include "notifications/email/_rows.html" %}
+{% include "notifications/email/_button.html" with url=bookings_url label="View your booking" %}
+{% endblock %}

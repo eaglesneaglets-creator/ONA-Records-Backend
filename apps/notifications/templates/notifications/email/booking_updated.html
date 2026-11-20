@@ -1,0 +1,10 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}{{ reference }} — your updated invoice is attached.{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow }}">Booking {{ reference }}</p>{% endblock %}
+{% block heading %}Your booking was updated{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, ONA has updated your booking. This is how it stands now:</p>
+{% include "notifications/email/_rows.html" %}
+{% include "notifications/email/_button.html" with url=bookings_url label="View your booking" %}
+<p style="{{ s.small }}">Your updated invoice is attached. Nothing else about the session has changed. If this is not what you agreed with us, reply to this email.</p>
+{% endblock %}

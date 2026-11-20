@@ -1,0 +1,20 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}{{ reference }} · {{ when }} has been cancelled and the time released.{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow_err }}">Cancelled</p>{% endblock %}
+{% block heading %}Your booking was cancelled{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, your booking {{ reference }} for {{ when }} has been cancelled, and the time has been released.</p>
+{% if released %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;"><tr><td style="{{ s.callout_info }}">
+  It was held for an hour and the deposit was not paid in that time, so the slot has gone back on the calendar. You are welcome to book again.
+</td></tr></table>
+{% endif %}
+{% if held %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;"><tr><td style="{% if credit_until %}{{ s.callout_ok }}{% else %}{{ s.callout_warn }}{% endif %}">
+  Under ONA’s booking terms the <strong>{{ held }}</strong> you paid is not refunded.
+  {% if credit_until %}Because you cancelled at least 48 hours ahead, it is kept as <strong>credit</strong> towards a new session booked and completed by <strong>{{ credit_until }}</strong>. Book again and reply to this email with your new reference, and ONA will apply it.{% else %}ONA will contact you about it.{% endif %}
+</td></tr></table>
+{% endif %}
+{% include "notifications/email/_button.html" with url=book_url label="Book another session" %}
+<p style="{{ s.small }}">If you did not ask for this, reply to this email and we will look into it.</p>
+{% endblock %}

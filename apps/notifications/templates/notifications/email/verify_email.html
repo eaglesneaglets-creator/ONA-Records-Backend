@@ -1,0 +1,10 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}One tap to confirm your address and finish setting up your account.{% endblock %}
+{% block heading %}Confirm your email{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, tap the button below to confirm this is your email address and finish setting up your ONA Records account.</p>
+{% include "notifications/email/_button.html" with url=link label="Confirm email address" %}
+<p style="{{ s.small }}">The link expires in 3 days. If you did not create an account, you can safely ignore this email.</p>
+{% include "notifications/email/_fallback.html" with url=link %}
+{% endblock %}
+{% block why %}You are receiving this because this address was used to sign up at ONA Records.{% endblock %}
