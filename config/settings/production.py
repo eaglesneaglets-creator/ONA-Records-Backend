@@ -119,18 +119,18 @@ REST_FRAMEWORK = {  # noqa: F405
 # ---------------------------------------------------------------------------
 # Sentry — optional
 # ---------------------------------------------------------------------------
+# core/sentry.py holds the options and the scrubbing: this platform holds
+# personal, identity and payment data, and none of it may reach Sentry.
 SENTRY_DSN = config('SENTRY_DSN', default='')
 if SENTRY_DSN:
-    import sentry_sdk
-    from sentry_sdk.integrations.django import DjangoIntegration
-    from sentry_sdk.integrations.celery import CeleryIntegration
+    from core.sentry import default_environment, default_release, init_sentry
 
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        integrations=[DjangoIntegration(), CeleryIntegration()],
-        environment=config('SENTRY_ENVIRONMENT', default='production'),
+    init_sentry(
+        SENTRY_DSN,
+        # staging.py imports this file, so it cannot set this afterwards.
+        environment=config('SENTRY_ENVIRONMENT', default=default_environment()),
+        release=default_release(),
         traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float),
-        send_default_pii=False,  # this platform holds personal and payment data
     )
 
 # Payments must only ever talk to Paystack over TLS (PAYSTACK_API_BASE is a

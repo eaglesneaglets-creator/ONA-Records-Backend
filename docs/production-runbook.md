@@ -38,12 +38,19 @@ Set on **both backend and worker** unless marked. Never copy staging secrets.
 | `PAYSTACK_SECRET_KEY` | the **live** key `sk_live_…` |
 | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_USE_TLS`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `DEFAULT_FROM_EMAIL` | the company mailbox (Google Workspace app password) |
 | `KYC_API_URL`, `KYC_API_KEY`, `KYC_WEBHOOK_SECRET` | a **new** KYC platform key whose webhook URL is `https://api.<domain>/api/v1/kyc/webhook/` |
-| `SENTRY_DSN` | so production errors are visible |
+| `SENTRY_DSN` | so production errors are visible (web **and** worker; the backend's own Sentry project). Check with `python manage.py ops_check --sentry-test` |
 | `CELERY_BEAT=1` | worker only |
 
 Frontend: `NEXT_PUBLIC_API_URL=https://api.<domain>/api/v1` and
 `NEXT_PUBLIC_ENVIRONMENT=production`. These are baked in at build time:
 redeploy the frontend after changing them.
+
+Frontend error reporting (its own Sentry project, not the backend's):
+`NEXT_PUBLIC_SENTRY_DSN` (baked in at build), plus `SENTRY_AUTH_TOKEN`,
+`SENTRY_ORG`, `SENTRY_PROJECT` so the build uploads source maps. In Sentry,
+for both projects: Security & Privacy → keep the default scrubbers on and turn
+on "Prevent Storing of IP Addresses"; Client Keys → set a rate limit; Allowed
+Domains → the production site only.
 
 Paystack dashboard (live mode): webhook URL
 `https://api.<domain>/api/v1/payments/paystack/webhook/`.

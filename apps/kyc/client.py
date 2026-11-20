@@ -64,9 +64,12 @@ def _call(method: str, path: str, *, raw: bool = False, **kwargs):
     if not is_configured():
         raise KycUnavailable('Identity checks are not set up yet.')
     url = settings.KYC_API_URL.rstrip('/') + path
-    headers = {'Authorization': f'Bearer {settings.KYC_API_KEY}', 'User-Agent': 'ona-records-backend'}
     try:
-        r = requests.request(method, url, headers=headers, timeout=20, **kwargs)
+        # Headers built inline, never in a named local: a local holding the
+        # key would be captured with the stack frame by an error reporter.
+        r = requests.request(method, url, timeout=20, headers={
+            'Authorization': f'Bearer {settings.KYC_API_KEY}', 'User-Agent': 'ona-records-backend'},
+            **kwargs)
     except requests.RequestException as exc:
         logger.warning('KYC %s %s unreachable: %s', method, path, type(exc).__name__)
         raise KycUnavailable() from None

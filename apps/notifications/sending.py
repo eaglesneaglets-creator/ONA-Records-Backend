@@ -67,7 +67,8 @@ def deliver(log: NotificationLog, email: Email) -> bool:
     try:
         msg.send(fail_silently=False)
     except Exception as exc:  # SMTP down, bad address, redirect not configured…
-        logger.exception('Notification %s to %s failed', log.kind, log.recipient)
+        # The log id, not the address: this line becomes a Sentry event.
+        logger.exception('Notification %s (log %s) failed', log.kind, log.pk)
         log.status = Status.FAILED
         log.error = f'{type(exc).__name__}: {exc}'[:500]
         log.save(update_fields=['status', 'error', 'updated_at'])
