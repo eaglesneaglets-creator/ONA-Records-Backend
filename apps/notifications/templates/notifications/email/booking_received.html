@@ -1,0 +1,17 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}{{ reference }} · {{ when }}{% if pending %} — held for one hour until the deposit is paid.{% endif %}{% endblock %}
+{% block eyebrow %}{% if pending %}<p style="{{ s.eyebrow_warn }}">Held for one hour</p>{% else %}<p style="{{ s.eyebrow }}">Booking {{ reference }}</p>{% endif %}{% endblock %}
+{% block heading %}We have your booking{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, thanks for booking with ONA. Here is everything in one place.</p>
+{% include "notifications/email/_rows.html" %}
+{% if pending %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;"><tr><td style="{{ s.callout_warn }}">
+  <strong>Pay the deposit to confirm.</strong> The slot is held for you for one hour; after that, if the deposit is unpaid, it is released for others to book. No payment has been taken yet.
+</td></tr></table>
+{% include "notifications/email/_button.html" with url=bookings_url label="Pay the deposit" %}
+{% else %}
+{% include "notifications/email/_button.html" with url=bookings_url label="View your booking" %}
+{% endif %}
+<p style="{{ s.small }}">Your invoice is attached. You can move or cancel the session from your bookings page up to 48 hours before it starts. See the <a href="{{ terms_url }}" style="color:{{ s.blue }};">booking terms</a>.</p>
+{% endblock %}

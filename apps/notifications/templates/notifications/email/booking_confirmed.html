@@ -1,0 +1,10 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}{{ reference }} · {{ when }} — see you at the studio.{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow_ok }}">Confirmed</p>{% endblock %}
+{% block heading %}Your session is confirmed{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Good news, {{ name }}: ONA has confirmed your session. Bring your files — your engineer will be ready.</p>
+{% include "notifications/email/_rows.html" %}
+{% include "notifications/email/_button.html" with url=bookings_url label="View your booking" %}
+<p style="{{ s.small }}">If something changes on your side, you can move or cancel it from your bookings page before it starts.</p>
+{% endblock %}

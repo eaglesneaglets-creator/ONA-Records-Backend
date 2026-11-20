@@ -1,8 +1,15 @@
 """
 What each notification says.
 
-Plain text is the message; the HTML part is the same words with the ONA
-brand bar. Every builder returns an Email, nothing is sent here.
+Two parts, the same words: plain text (templates/notifications/*.txt) for
+clients that want it and for the record, and a designed HTML part
+(templates/notifications/email/*.html): a card, a heading, the booking as a
+key/value panel, one clear button and a link fallback. Every builder returns
+an Email; nothing is sent here.
+
+HTML email rules the templates follow: tables for layout, every style inline
+(STYLES below, so one change restyles every email), images by absolute URL
+(clients block data: URIs), no script, a light colour scheme.
 
 Voice (PRODUCT.md): informed, helpful, relaxed, humble. Say what happened,
 what happens next, and whether any money moved — in that order.
@@ -13,12 +20,42 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from zoneinfo import ZoneInfo
 
+from urllib.parse import urlsplit
+
 from django.conf import settings
 from django.template.loader import render_to_string
 
 from apps.payments.money import format_ghs
 
 TZ = ZoneInfo(settings.TIME_ZONE)
+
+_FONT = "Lato,'Helvetica Neue',Helvetica,Arial,sans-serif"
+_EYEBROW = (f'margin:0 0 10px;font-family:{_FONT};font-size:11px;line-height:16px;'
+            'font-weight:900;letter-spacing:1.4px;text-transform:uppercase;')
+_CALLOUT = (f'padding:14px 16px;border-radius:10px;font-family:{_FONT};font-size:14px;'
+            'line-height:21px;')
+# The HTML emails' design tokens: the web app's own (app/globals.css), written
+# out as inline CSS because most email clients ignore <style>.
+STYLES = {
+    'font': _FONT,
+    'page_bg': '#f4f4f6',
+    'panel_bg': '#fafafb',
+    'border': '#e5e3ea',
+    'ink': '#17151f',
+    'dim': '#55525f',
+    'mute': '#6b6878',
+    'blue': '#00108f',
+    'primary': '#c90007',
+    'p': f'margin:0 0 14px;font-family:{_FONT};font-size:15px;line-height:24px;color:#55525f;',
+    'small': f'margin:16px 0 0;font-family:{_FONT};font-size:13px;line-height:20px;color:#6b6878;',
+    'eyebrow': _EYEBROW + 'color:#00108f;',
+    'eyebrow_ok': _EYEBROW + 'color:#146b43;',
+    'eyebrow_warn': _EYEBROW + 'color:#8a5a05;',
+    'eyebrow_err': _EYEBROW + 'color:#c90007;',
+    'callout_info': _CALLOUT + 'background-color:#e8eaf7;color:#00108f;',
+    'callout_ok': _CALLOUT + 'background-color:#e6f4ec;color:#146b43;',
+    'callout_warn': _CALLOUT + 'background-color:#fbf0dd;color:#8a5a05;',
+}
 
 
 @dataclass
@@ -34,6 +71,13 @@ def _when(booking) -> str:
     return f"{s.strftime('%A %d %B %Y')}, {s.strftime('%H:%M')}–{e.strftime('%H:%M')} (Accra time)"
 
 
+def _date_time(booking) -> list[tuple[str, str]]:
+    """The panel's Date and Time rows: _when split in two, so neither wraps."""
+    s, e = booking.start_at.astimezone(TZ), booking.end_at.astimezone(TZ)
+    return [('Date', s.strftime('%A %d %B %Y')),
+            ('Time', f"{s.strftime('%H:%M')}–{e.strftime('%H:%M')} (Accra time)")]
+
+
 def _name(user) -> str:
     return user.first_name or 'there'
 
@@ -43,12 +87,16 @@ def _bookings_url() -> str:
 
 
 def _render(template: str, subject: str, ctx: dict) -> Email:
+    site = settings.FRONTEND_URL.rstrip('/')
     ctx = {**ctx, 'subject': subject, 'bookings_url': _bookings_url(),
-           'terms_url': f'{settings.FRONTEND_URL}/legal/terms'}
+           'book_url': f'{site}/customer/book',
+           'terms_url': f'{site}/legal/terms',
+           'site_url': site, 'site_host': urlsplit(site).netloc or site,
+           # Served by the website (public/email-logo.png, 96px for 2x screens).
+           'logo_url': f'{site}/email-logo.png',
+           's': STYLES}
     text = render_to_string(f'notifications/{template}.txt', ctx).strip() + '\n'
-    html = render_to_string('notifications/base.html', {
-        **ctx, 'body': render_to_string(f'notifications/{template}.txt', ctx).strip(),
-    })
+    html = render_to_string(f'notifications/email/{template}.html', ctx)
     return Email(subject=subject, text=text, html=html)
 
 
@@ -65,6 +113,17 @@ def booking_context(booking) -> dict:
         'when': _when(booking),
         'total': format_ghs(booking.total_pesewas),
         'pending': booking.status == 'pending',
+        # The key/value panel of the HTML part (email/_rows.html).
+        'rows': [
+            ('Reference', booking.reference),
+            *_date_time(booking),
+            ('Room', booking.room.name),
+            ('Engineer', booking.engineer.name),
+            ('Session', booking.service.name),
+            *([('With', f'{pro.public_name} ({format_ghs(booking.professional_fee_pesewas)})')]
+              if pro else []),
+            ('Total', format_ghs(booking.total_pesewas)),
+        ],
     }
 
 
@@ -132,6 +191,10 @@ def payment_confirmed(booking, receipt) -> Email:
            'confirmed': booking.status == 'confirmed',
            'balance': format_ghs(max(booking.total_pesewas - net_paid(booking), 0))
            if booking.total_pesewas > net_paid(booking) else ''}
+    ctx['payment_rows'] = [('Booking', booking.reference), ('Receipt', receipt.number),
+                           *_date_time(booking),
+                           ('Room', f"{ctx['room']}, with {ctx['engineer']}"),
+                           ('Booking total', ctx['total'])]
     email = _render('payment_confirmed', f'Payment received — {booking.reference}', ctx)
     email.attachments.append((f'ONA-receipt-{receipt.number}.pdf', render_receipt(receipt),
                               'application/pdf'))
@@ -140,7 +203,7 @@ def payment_confirmed(booking, receipt) -> Email:
 
 def payment_refunded(booking, entry) -> Email:
     ctx = {**booking_context(booking), 'amount': format_ghs(entry.amount_pesewas),
-           'note': entry.note}
+           'note': entry.note, 'refund_rows': [('How it was returned', entry.note)]}
     return _render('payment_refunded', f'Refund recorded — {booking.reference}', ctx)
 
 
@@ -156,12 +219,14 @@ def verify_email(user, link: str) -> Email:
 
 def account_created(user, link: str) -> Email:
     return _render('account_created', 'ONA Records has set up your account',
-                   {'name': _name(user), 'link': link, 'email': user.email})
+                   {'name': _name(user), 'link': link, 'email': user.email,
+                    'account_rows': [('Your sign-in email', user.email)]})
 
 
 def staff_invited(user, link: str) -> Email:
     return _render('staff_invited', 'You have been added to the ONA Records staff console',
-                   {'name': _name(user), 'link': link, 'email': user.email})
+                   {'name': _name(user), 'link': link, 'email': user.email,
+                    'account_rows': [('Your sign-in email', user.email)]})
 
 
 def password_reset(user, link: str) -> Email:

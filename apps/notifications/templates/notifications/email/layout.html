@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  {% comment %} Light only: the brand colours are fixed, and clients that force a dark
+     theme invert a light design more cleanly than a half-dark one. {% endcomment %}
+  <meta name="color-scheme" content="light">
+  <meta name="supported-color-schemes" content="light">
+  <title>{{ subject }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    /* Only what inline styles cannot do. Every client that drops <style>
+       still gets the full design from the inline styles. */
+    a { color: #00108f; }
+    @media (max-width: 600px) {
+      .ona-card { padding: 28px 22px !important; }
+      .ona-gutter { padding: 16px 12px !important; }
+      .ona-h1 { font-size: 22px !important; line-height: 30px !important; }
+      .ona-btn a { display: block !important; }
+      .ona-btn, .ona-btn td { width: 100% !important; }
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:{{ s.page_bg }};-webkit-text-size-adjust:100%;">
+  {% comment %} The line inbox previews show after the subject. Padded with zero-width
+     joiners so the preview does not run on into the email's first words. {% endcomment %}
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">{% block preheader %}{% endblock %}&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;&#8204;&nbsp;</div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:{{ s.page_bg }};">
+    <tr>
+      <td align="center" class="ona-gutter" style="padding:40px 16px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;">
+
+          {# Brand: icon + wordmark, outside the card, like an app's header. #}
+          <tr>
+            <td style="padding:0 4px 20px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="vertical-align:middle;padding-right:10px;">
+                    <a href="{{ site_url }}" style="text-decoration:none;"><img src="{{ logo_url }}" width="36" height="36" alt="ONA" style="display:block;border:0;border-radius:18px;background-color:#ffffff;"></a>
+                  </td>
+                  <td style="vertical-align:middle;font-family:{{ s.font }};font-size:15px;font-weight:900;letter-spacing:0.2px;color:{{ s.ink }};">
+                    ONA Records
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          {# The card. #}
+          <tr>
+            <td style="background-color:#ffffff;border:1px solid {{ s.border }};border-radius:14px;overflow:hidden;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr><td height="4" style="height:4px;line-height:4px;font-size:0;background-color:#64084b;background-image:linear-gradient(90deg,#00108f 0%,#310c6d 30%,#64084b 55%,#970429 78%,#c90007 100%);border-radius:14px 14px 0 0;">&nbsp;</td></tr>
+                <tr>
+                  <td class="ona-card" style="padding:36px 40px 40px;font-family:{{ s.font }};">
+                    {% block eyebrow %}{% endblock %}
+                    <h1 class="ona-h1" style="margin:0 0 12px;font-family:{{ s.font }};font-size:24px;line-height:32px;font-weight:900;letter-spacing:-0.3px;color:{{ s.ink }};">{% block heading %}{% endblock %}</h1>
+                    {% block content %}{% endblock %}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          {# Footer. #}
+          <tr>
+            <td style="padding:24px 4px 0;font-family:{{ s.font }};font-size:12px;line-height:19px;color:{{ s.mute }};">
+              <p style="margin:0 0 6px;">
+                <a href="{{ bookings_url }}" style="color:{{ s.dim }};text-decoration:underline;">Your bookings</a>
+                &nbsp;·&nbsp;
+                <a href="{{ terms_url }}" style="color:{{ s.dim }};text-decoration:underline;">Booking terms</a>
+                &nbsp;·&nbsp;
+                <a href="{{ site_url }}" style="color:{{ s.dim }};text-decoration:underline;">{{ site_host }}</a>
+              </p>
+              <p style="margin:0;">ONA Records Creative Services · Accra, Ghana<br>{% block why %}You are receiving this because of your ONA Records account.{% endblock %}</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

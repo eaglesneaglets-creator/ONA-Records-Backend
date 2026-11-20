@@ -23,9 +23,9 @@ from decouple import config, Csv
 # ---------------------------------------------------------------------------
 ENVIRONMENT_NAME = 'staging'
 
-# Surfaced by the health endpoint and included in every Sentry event, so an
-# alert says which environment it came from.
-SENTRY_ENVIRONMENT = 'staging'
+# Surfaced by the health endpoint. Sentry events are tagged 'staging' by
+# core/sentry.py (default_environment), which has to decide while
+# production.py is still being imported above.
 
 # ---------------------------------------------------------------------------
 # 2. Debug stays OFF

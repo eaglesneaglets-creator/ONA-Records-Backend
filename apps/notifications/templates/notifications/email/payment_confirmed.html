@@ -1,0 +1,15 @@
+{% extends "notifications/email/layout.html" %}
+{% block preheader %}{{ amount }} received for {{ reference }}.{% if confirmed %} Your session is confirmed.{% endif %}{% endblock %}
+{% block eyebrow %}<p style="{{ s.eyebrow_ok }}">Payment received</p>{% endblock %}
+{% block heading %}{{ amount }}{% endblock %}
+{% block content %}
+<p style="{{ s.p }}">Hi {{ name }}, we have received your payment for booking {{ reference }}.{% if confirmed %} Your session is <strong>confirmed</strong>.{% endif %}</p>
+{% if balance %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0 0;"><tr><td style="{{ s.callout_info }}">
+  <strong>{{ balance }} still to pay</strong>, before or on the day of your session — before files or final deliverables are released.
+</td></tr></table>
+{% endif %}
+{% include "notifications/email/_rows.html" with rows=payment_rows %}
+{% include "notifications/email/_button.html" with url=bookings_url label="View your booking" %}
+<p style="{{ s.small }}">Your receipt ({{ receipt_number }}) is attached. Deposits are covered by ONA’s <a href="{{ terms_url }}" style="color:{{ s.blue }};">booking terms</a>.</p>
+{% endblock %}
