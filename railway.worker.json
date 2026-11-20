@@ -1,0 +1,14 @@
+{
+  "$schema": "https://railway.app/railway-schema.json",
+  "_note": "Config for the Celery worker service. In that service: Settings -> Config-as-code -> Railway config file = /railway.worker.json. Without it the worker inherits railway.json: gunicorn's start command and an HTTP health check a worker can never pass.",
+  "build": {
+    "builder": "DOCKERFILE",
+    "dockerfilePath": "Dockerfile",
+    "dockerBuildTarget": "production"
+  },
+  "deploy": {
+    "startCommand": "./start-worker.sh",
+    "restartPolicyType": "ALWAYS",
+    "numReplicas": 1
+  }
+}

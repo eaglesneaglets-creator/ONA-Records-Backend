@@ -62,3 +62,11 @@ desktop.ini
 scratch/
 tmp/
 *.local
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/
+
+# Graft codebase graph — local, regenerable cache
+
+# Claude Code project folder (local tooling, never committed)
+/.claude/

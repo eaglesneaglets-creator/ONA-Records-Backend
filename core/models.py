@@ -6,10 +6,36 @@ app — a payment release, a professional approval, a review takedown — and no
 of those should have to depend on the accounts app to write a record.
 """
 
+import ipaddress
 import uuid
 
 from django.conf import settings
 from django.db import models, transaction
+
+
+def client_ip(request):
+    """
+    The caller's address, trusting only the proxy hops we actually have.
+
+    The FIRST X-Forwarded-For entry is whatever the client typed. With
+    NUM_PROXIES set (production: Railway, 1 hop) the trustworthy address is
+    the Nth from the end. Anything that is not a valid IP is dropped rather
+    than saved — an invalid value made the inet column raise and the audit
+    row was silently lost.
+    """
+    from django.conf import settings
+
+    num_proxies = (getattr(settings, 'REST_FRAMEWORK', {}) or {}).get('NUM_PROXIES')
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    candidate = request.META.get('REMOTE_ADDR')
+    if forwarded and num_proxies:
+        hops = [h.strip() for h in forwarded.split(',') if h.strip()]
+        if hops:
+            candidate = hops[-min(num_proxies, len(hops))]
+    try:
+        return str(ipaddress.ip_address(candidate)) if candidate else None
+    except ValueError:
+        return None
 
 
 class AuditLog(models.Model):
@@ -49,6 +75,12 @@ class AuditLog(models.Model):
         PROFESSIONAL_REJECTED = 'professional.rejected', 'Professional rejected'
         USER_SUSPENDED = 'user.suspended', 'Account suspended'
         USER_REACTIVATED = 'user.reactivated', 'Account reactivated'
+        PASSWORD_CHANGED = 'user.password_changed', 'Password changed'
+        STAFF_INVITED = 'staff.invited', 'Staff member added'
+
+        # Site details
+        CONTACT_UPDATED = 'content.contact_updated', 'Contact details updated'
+        BUSINESS_SETTINGS_UPDATED = 'business.settings_updated', 'Business settings changed'
 
         # Identity masking — unmasking is a privileged act and is recorded.
         IDENTITIES_REVEALED = 'project.identities_revealed', 'Identities revealed to both parties'
@@ -56,6 +88,9 @@ class AuditLog(models.Model):
         # Content
         REVIEW_PUBLISHED = 'review.published', 'Review published'
         REVIEW_REJECTED = 'review.rejected', 'Review rejected'
+
+        # Identity checks (decided in the KYC service, recorded here too)
+        IDENTITY_DECIDED = 'identity.decided', 'Identity check decided'
 
         # Bookings
         BOOKING_CANCELLED = 'booking.cancelled', 'Booking cancelled'
@@ -143,13 +178,7 @@ class AuditLog(models.Model):
                 entry.target_id = str(getattr(target, 'pk', ''))
 
             if request is not None:
-                # X-Forwarded-For is set by Railway's proxy; the first entry
-                # is the client. Falls back to REMOTE_ADDR locally.
-                forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
-                entry.ip_address = (
-                    forwarded.split(',')[0].strip() if forwarded
-                    else request.META.get('REMOTE_ADDR')
-                )
+                entry.ip_address = client_ip(request)
 
             # Isolate a database failure from a transaction owned by the
             # caller. Catching the exception alone leaves that transaction
@@ -162,3 +191,61 @@ class AuditLog(models.Model):
                 'Audit write failed: action=%s actor=%s', action, getattr(actor, 'pk', None),
             )
             return None
+
+
+class BusinessSettings(models.Model):
+    """
+    ONA's business rules, edited by staff in the console (Business settings).
+
+    One row (pk=1). Until staff save it the first time it does not exist and
+    every rule comes from the environment (config/settings/base.py), so a
+    deploy never changes behaviour on its own. Read it through
+    core.business.rules(), never directly: that is where the fallback and
+    the cache live. Every change is in the AuditLog.
+    """
+
+    SINGLETON_PK = 1
+
+    # Bookings and payment
+    booking_deposit_percent = models.PositiveSmallIntegerField()
+    unpaid_hold_minutes = models.PositiveIntegerField()
+    free_cancellation_hours = models.PositiveIntegerField()
+    deposit_credit_days = models.PositiveIntegerField()
+    max_open_unpaid = models.PositiveSmallIntegerField()
+    reminder_hours_before = models.PositiveSmallIntegerField()
+    # Studio hours (0-24; 0 and 24 mean round the clock)
+    studio_open_hour = models.PositiveSmallIntegerField()
+    studio_close_hour = models.PositiveSmallIntegerField()
+    # Fees and commission
+    pass_paystack_fee = models.BooleanField()
+    paystack_fee_basis_points = models.PositiveIntegerField()
+    studio_commission_percent = models.PositiveSmallIntegerField()
+    marketplace_commission_percent = models.PositiveSmallIntegerField()
+    # Tax: prices INCLUDE tax (owner, 2026-11-18); invoices show the split.
+    tax_enabled = models.BooleanField(default=False)
+    taxes = models.JSONField(default=list, blank=True,
+                             help_text='[{"name": "VAT", "basis_points": 1500}] (1500 = 15%).')
+    # Invoice details
+    invoice_business_name = models.CharField(max_length=200)
+    invoice_address = models.CharField(max_length=300, blank=True)
+    invoice_tin = models.CharField(max_length=40, blank=True)
+    invoice_contact = models.CharField(max_length=300, blank=True)
+    invoice_bank_details = models.CharField(max_length=300, blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        verbose_name = 'business settings'
+        verbose_name_plural = 'business settings'
+
+    def __str__(self) -> str:
+        return 'ONA business settings'
+
+    def save(self, *args, **kwargs):
+        self.pk = self.SINGLETON_PK
+        super().save(*args, **kwargs)
+        from core.business import forget
+        forget()
+        transaction.on_commit(forget)

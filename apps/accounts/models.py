@@ -72,6 +72,13 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     email = models.EmailField(unique=True, db_index=True)
     phone = models.CharField(max_length=20, blank=True)
+    # The customer hid their "Get started" guide (apps/accounts/journey.py).
+    journey_dismissed_at = models.DateTimeField(null=True, blank=True)
+    # "What brings you to ONA?" from the welcome flow — tailors what they are
+    # shown first, and tells staff what a new customer came for.
+    intent = models.CharField(max_length=16, blank=True)
+    # First-run state: {"welcomed_at": iso, "tours": ["booking", ...]}.
+    onboarding = models.JSONField(default=dict, blank=True)
 
     first_name = models.CharField(max_length=80, blank=True)
     last_name = models.CharField(max_length=80, blank=True)
@@ -116,6 +123,17 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return self.email
+
+    @property
+    def must_verify_email_to_book(self) -> bool:
+        """
+        Booking needs a confirmed email (BOOKING_REQUIRES_VERIFIED_EMAIL) and
+        only customers book. The one rule behind the booking gate's banner
+        (UserSerializer.must_verify_email) and the journey's wording.
+        """
+        from django.conf import settings
+        return bool(getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True)
+                    and self.role == Role.CUSTOMER)
 
     @property
     def full_name(self) -> str:

@@ -1,0 +1,14 @@
+{% autoescape off %}Hello {{ name }},
+
+You have been added to the ONA Records staff console ({{ email }}). From there
+you run bookings, payments, identity checks and the studio catalogue.
+
+Choose a password to sign in:
+{{ link }}
+
+The link works once and expires in a few days. If it has expired, use
+"Forgot your password?" on the sign-in page to get a new one.
+
+If you were not expecting this, tell the studio manager.
+
+ONA Records{% endautoescape %}

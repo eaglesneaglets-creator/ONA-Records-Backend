@@ -1,0 +1,15 @@
+{% autoescape off %}Hello {{ name }},
+
+ONA Records has set up an account for you ({{ email }}) so you can see and
+manage the session we booked with you.
+
+Choose a password to sign in:
+{{ link }}
+
+The link works once and expires in a few days. If it has expired, use
+"Forgot your password?" on the sign-in page to get a new one.
+
+If you did not ask ONA to book anything, reply to this email and we will
+close the account.
+
+ONA Records{% endautoescape %}

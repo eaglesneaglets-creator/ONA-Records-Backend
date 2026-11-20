@@ -1,0 +1,22 @@
+{% autoescape off %}Hello {{ name }},
+
+We have your booking.
+
+  Reference: {{ reference }}
+  Session:   {{ when }}
+  Room:      {{ room }}, with {{ engineer }}
+  For:       {{ service }}{% if professional %}
+  With:      {{ professional }} ({{ professional_fee }}){% endif %}
+  Total:     {{ total }}
+{% if pending %}
+The slot is held for you for one hour. Pay the deposit from your bookings page
+to confirm it; after an hour unpaid, it is released for others to book.
+No payment has been taken yet.
+{% endif %}
+Your invoice is attached. You can move or cancel the session from your
+bookings page up to 48 hours before it starts:
+{{ bookings_url }}
+
+Booking terms: {{ terms_url }}
+
+ONA Records{% endautoescape %}

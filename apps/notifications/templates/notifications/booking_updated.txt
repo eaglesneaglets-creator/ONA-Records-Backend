@@ -1,0 +1,16 @@
+{% autoescape off %}Hello {{ name }},
+
+ONA has updated your booking {{ reference }}.
+
+  Session:   {{ when }}
+  Room:      {{ room }}, with {{ engineer }}
+  For:       {{ service }}{% if professional %}
+  With:      {{ professional }} ({{ professional_fee }}){% endif %}
+  Total:     {{ total }}
+
+Your updated invoice is attached. Nothing else about the session has changed.
+If this is not what you agreed with us, reply to this email.
+
+Your bookings: {{ bookings_url }}
+
+ONA Records{% endautoescape %}

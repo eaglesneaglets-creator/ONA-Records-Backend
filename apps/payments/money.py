@@ -87,3 +87,44 @@ def format_ghs(pesewas: int) -> str:
     negative = pesewas < 0
     whole, part = divmod(abs(pesewas), 100)
     return '%sGHS %s.%02d' % ('-' if negative else '', f'{whole:,}', part)
+
+
+def deposit_pesewas(total_pesewas: int, percent: int) -> int:
+    """
+    The deposit that secures a booking: `percent` of the total, rounded UP to
+    the pesewa so it is never less than the stated share. 50% of GHS 150.01
+    is GHS 75.01, not 75.00.
+    """
+    if type(total_pesewas) is not int or total_pesewas < 0:
+        raise ValueError('total must be a non-negative int of pesewas')
+    if type(percent) is not int or not 0 <= percent <= 100:
+        raise ValueError('percent must be an int from 0 to 100')
+    return -(-total_pesewas * percent // 100)
+
+
+def provider_fee(charge_pesewas: int, basis_points: int) -> int:
+    """What a percentage provider keeps from a charge, rounded up (worst case)."""
+    return -(-charge_pesewas * basis_points // 10_000)
+
+
+def pass_on_fee(amount_pesewas: int, basis_points: int) -> int:
+    """
+    The processing fee to add so ONA still receives `amount_pesewas` after the
+    provider takes its percentage (ONA: "a small processing fee added to the
+    final checkout total").
+
+    Grossed up, not simply amount × rate: the provider charges its rate on
+    the WHOLE charge, fee included, so adding only amount × rate leaves ONA
+    short. The smallest charge whose net covers the amount, found exactly in
+    integers — 1.95% on GHS 75.00 is a fee of GHS 1.50, not GHS 1.46.
+    """
+    if type(amount_pesewas) is not int or amount_pesewas <= 0:
+        raise ValueError('amount must be a positive int of pesewas')
+    if type(basis_points) is not int or not 0 <= basis_points < 10_000:
+        raise ValueError('basis_points must be an int from 0 to 9999')
+    if basis_points == 0:
+        return 0
+    charge = -(-amount_pesewas * 10_000 // (10_000 - basis_points))
+    while charge - provider_fee(charge, basis_points) < amount_pesewas:
+        charge += 1
+    return charge - amount_pesewas

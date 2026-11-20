@@ -379,14 +379,14 @@ class TestUserManager:
 
 class TestEmailVerification:
     def test_a_valid_token_verifies(self, api, customer):
-        from django.contrib.auth.tokens import default_token_generator
+        from apps.accounts.tokens import email_verification_token
         from django.utils.encoding import force_bytes
         from django.utils.http import urlsafe_base64_encode
 
         assert not customer.is_email_verified
         r = api.post(reverse('accounts:verify-email'), {
             'uid': urlsafe_base64_encode(force_bytes(customer.pk)),
-            'token': default_token_generator.make_token(customer),
+            'token': email_verification_token.make_token(customer),
         }, format='json')
 
         assert r.status_code == 200

@@ -1,0 +1,115 @@
+"""
+Pre-launch readiness check (Task 19/20).
+
+    python manage.py launch_check            # on the target environment (Railway shell)
+
+Lists what still stands between this environment and taking real bookings,
+as BLOCKER (must fix) or WARN (decide consciously). Exits non-zero when any
+blocker remains, so it can gate a release step.
+
+It reads only settings and the live catalogue/FAQ — it changes nothing.
+"""
+
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+
+from core.business import rules
+
+PLACEHOLDER_MARKERS = ('PLACEHOLDER', 'lorem ipsum', 'replace with a real')
+
+
+def _has_marker(*texts) -> bool:
+    joined = ' '.join(t or '' for t in texts).lower()
+    return any(m.lower() in joined for m in PLACEHOLDER_MARKERS)
+
+
+def collect() -> list[tuple[str, str]]:
+    """[(level, message)] - level is 'BLOCKER' or 'WARN'."""
+    from apps.content.models import ContactDetails, Faq
+    from apps.studio.models import Engineer, Package, Room, Service
+
+    out: list[tuple[str, str]] = []
+
+    # ── Content ─────────────────────────────────────────────────────────
+    rooms = list(Room.objects.active())
+    if not rooms:
+        out.append(('BLOCKER', 'No rooms are on sale - customers have nothing to book.'))
+    for kind, items, fields in (
+        ('room', rooms, ('name', 'description')),
+        ('engineer', list(Engineer.objects.active()), ('name', 'bio')),
+        ('service', list(Service.objects.active()), ('name', 'description')),
+        ('package', list(Package.objects.active()), ('name', 'description')),
+    ):
+        for item in items:
+            if _has_marker(*(getattr(item, f) for f in fields)):
+                out.append(('BLOCKER', f'Placeholder text on {kind} "{item.name}" - replace it in '
+                                       'Studio & prices, or switch it off.'))
+    if not Engineer.objects.active().exists():
+        out.append(('BLOCKER', 'No engineers are on sale - a booking needs one.'))
+    for faq in Faq.objects.filter(is_published=True):
+        if _has_marker(faq.question, faq.answer):
+            out.append(('BLOCKER', f'Placeholder text in the FAQ "{faq.question}".'))
+
+    if ContactDetails.load().is_empty:
+        out.append(('BLOCKER', 'Contact details are empty (Questions & contact in the console): '
+                               'the contact page and privacy policy have no way to reach ONA.'))
+
+    # ── Settings ────────────────────────────────────────────────────────
+    site = getattr(settings, 'FRONTEND_URL', '')
+    if not site.startswith('https://') or 'localhost' in site:
+        out.append(('BLOCKER', f'FRONTEND_URL is {site!r}: email links and the Paystack return '
+                               'address would not reach the live website.'))
+    if settings.DEBUG:
+        out.append(('BLOCKER', 'DEBUG is on.'))
+    if settings.ADMIN_URL.strip('/') == 'admin':
+        out.append(('BLOCKER', 'ADMIN_URL is the default "admin/" - set a private path.'))
+    if 'console' in settings.EMAIL_BACKEND or 'locmem' in settings.EMAIL_BACKEND:
+        out.append(('BLOCKER', f'Email is not sent ({settings.EMAIL_BACKEND}). Customers would '
+                               'never receive confirmations or verification links.'))
+    elif not getattr(settings, 'EMAIL_HOST', ''):
+        out.append(('BLOCKER', 'EMAIL_HOST is not set: every email fails, including verification '
+                               'links. Set EMAIL_HOST, EMAIL_HOST_USER and EMAIL_HOST_PASSWORD.'))
+    if not getattr(settings, 'BOOKING_REQUIRES_VERIFIED_EMAIL', True):
+        out.append(('BLOCKER', 'BOOKING_REQUIRES_VERIFIED_EMAIL is off.'))
+    if not getattr(settings, 'CELERY_BROKER_URL', ''):
+        out.append(('WARN', 'No Celery broker: emails send inline and session reminders do not '
+                            'run on a schedule. Add Redis and a worker with CELERY_BEAT=1.'))
+    key = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
+    if not key:
+        out.append(('WARN', 'PAYSTACK_SECRET_KEY is not set: no online payment. Staff can still '
+                            'record payments by hand.'))
+    elif key.startswith('sk_test_') and getattr(settings, 'ENVIRONMENT_NAME', 'production') \
+            == 'production':
+        out.append(('BLOCKER', 'PAYSTACK_SECRET_KEY is a TEST key on production - customers would '
+                               '"pay" and no money would arrive. Use the sk_live_ key.'))
+    # Business rules: staff's saved Business settings, else the environment.
+    biz = rules()
+    # OQ3 answered (Nov 2026): 0% on studio sessions, 10% on marketplace jobs.
+    if biz.studio_commission_percent != 0:
+        out.append(('WARN', 'STUDIO_COMMISSION_PERCENT is not 0, but ONA charges no commission '
+                            'on studio sessions.'))
+    for key, value, what in (('INVOICE_CONTACT', biz.invoice_contact, "the studio manager's name, phone and email"),
+                             ('INVOICE_BANK_DETAILS', biz.invoice_bank_details, 'the bank account for transfers'),
+                             ('INVOICE_TIN', biz.invoice_tin, "ONA's TIN")):
+        if not value:
+            out.append(('WARN', f'{key} is empty (Business settings > Invoices): invoices leave out {what}.'))
+    if biz.tax_enabled and not biz.taxes:
+        out.append(('BLOCKER', 'Tax is switched on but no tax lines are set (Business settings > Tax).'))
+    if biz.tax_enabled and not biz.invoice_tin:
+        out.append(('BLOCKER', 'Tax is switched on but there is no TIN: a tax invoice must show it.'))
+    return out
+
+
+class Command(BaseCommand):
+    help = 'List what still blocks taking real bookings on this environment.'
+
+    def handle(self, *args, **options):
+        findings = collect()
+        blockers = [m for lvl, m in findings if lvl == 'BLOCKER']
+        for lvl, msg in findings:
+            style = self.style.ERROR if lvl == 'BLOCKER' else self.style.WARNING
+            self.stdout.write(style(f'{lvl:8} {msg}'))
+        if blockers:
+            raise CommandError(f'{len(blockers)} blocker(s) - not ready to launch.')
+        self.stdout.write(self.style.SUCCESS(
+            'Ready: no blockers.' + (' Review the warnings above.' if findings else '')))

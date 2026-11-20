@@ -1,0 +1,15 @@
+# Lint rules for the backend. Run: ruff check .
+# Correctness first (pyflakes, bugbear), then the simplifications that remove
+# real noise. Formatting is not enforced.
+target-version = "py312"
+extend-exclude = ["graft", "*/migrations/*"]
+
+[lint]
+select = ["F", "E9", "B", "SIM", "C4", "PIE", "RET503", "PLE"]
+ignore = ["SIM108"]
+
+[lint.per-file-ignores]
+# Environment settings extend base.py with a star import by design.
+"config/settings/*.py" = ["F403", "F405"]
+# Nested `with` blocks in tests read as arrange / act; leave them.
+"*/tests/*.py" = ["SIM117"]

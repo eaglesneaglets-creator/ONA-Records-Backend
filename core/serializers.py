@@ -69,14 +69,4 @@ class MaskedUserSerializer(serializers.ModelSerializer):
 
         # 3. ONA admin sees everyone — they are the intermediary, and cannot
         #    resolve a dispute between two anonymous references.
-        if getattr(request.user, 'role', None) == 'admin':
-            return True
-
-        return False
-
-
-class TimestampedSerializer(serializers.ModelSerializer):
-    """Adds created/updated in ISO-8601 UTC, for anything with those fields."""
-
-    created_at = serializers.DateTimeField(read_only=True)
-    updated_at = serializers.DateTimeField(read_only=True)
+        return getattr(request.user, 'role', None) == 'admin'

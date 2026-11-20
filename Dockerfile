@@ -46,6 +46,7 @@ RUN chmod +x start.sh start-worker.sh
 # A dummy key is enough: collectstatic touches no secrets and no database.
 RUN SECRET_KEY=build-only-dummy \
     DATABASE_URL=postgres://u:p@localhost:5432/d \
+    FRONTEND_URL=https://build.invalid \
     DJANGO_SETTINGS_MODULE=config.settings.production \
     python manage.py collectstatic --noinput
 

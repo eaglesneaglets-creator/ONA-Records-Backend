@@ -1,43 +1,36 @@
 """
 Email backends.
 
-RedirectingEmailBackend exists for one reason: staging databases tend to hold
-copies of real bookings, which means real customer addresses. Without this,
-testing the booking flow on staging emails actual customers about sessions
-that never happened.
+RedirectingEmailBackend is staging's email backend.
 
-Enable in staging settings:
+By default it delivers to the real recipients with "[STAGING]" at the start
+of every subject, so QA can test signup, verification and booking emails end
+to end and nobody mistakes a staging email for a live one. That is safe only
+while staging holds test accounts: never load a copy of production data into
+staging without first setting STAGING_EMAIL_REDIRECT_TO.
 
-    EMAIL_BACKEND = 'core.email_backends.RedirectingEmailBackend'
-    STAGING_EMAIL_REDIRECT_TO = 'you@example.com'
+With STAGING_EMAIL_REDIRECT_TO set, every message goes to that one inbox
+instead; the real To/Cc/Bcc are kept in headers and at the top of the body.
 """
 
 from django.conf import settings
 from django.core.mail.backends.smtp import EmailBackend as SMTPBackend
 
+STAGING_TAG = '[STAGING] '
+
 
 class RedirectingEmailBackend(SMTPBackend):
-    """
-    Send every message to one address instead of its real recipients.
-
-    The original To/Cc/Bcc are preserved in headers and prepended to the body,
-    so you can still verify the message was addressed correctly — you just
-    receive it yourself instead of the customer receiving it.
-    """
+    """Tag every message as staging; optionally send them all to one inbox."""
 
     def send_messages(self, email_messages):
         redirect_to = getattr(settings, 'STAGING_EMAIL_REDIRECT_TO', '')
-        if not redirect_to:
-            # Refuse to send rather than fall through to real delivery. A
-            # misconfiguration here is exactly the case this class prevents.
-            raise ValueError(
-                'RedirectingEmailBackend is active but '
-                'STAGING_EMAIL_REDIRECT_TO is not set. Refusing to send: '
-                'without a redirect address these messages would go to real '
-                'recipients.'
-            )
 
         for message in email_messages:
+            if not message.subject.startswith(STAGING_TAG):
+                message.subject = STAGING_TAG + message.subject
+            if not redirect_to:
+                continue
+
             original = {
                 'To': ', '.join(message.to or []),
                 'Cc': ', '.join(getattr(message, 'cc', []) or []),

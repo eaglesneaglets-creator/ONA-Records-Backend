@@ -103,7 +103,18 @@ EMAIL_PORT = config('EMAIL_PORT', default=587, cast=int)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = config('EMAIL_USE_TLS', default=True, cast=bool)
+# Seconds. Without it a stalled SMTP server holds a worker indefinitely.
+EMAIL_TIMEOUT = config('EMAIL_TIMEOUT', default=20, cast=int)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='ONA Records <no-reply@onarecords.com>')
+
+# ---------------------------------------------------------------------------
+# Behind Railway's proxy: exactly one hop appends to X-Forwarded-For. Without
+# this DRF keys throttles on the whole header, which the client controls, so a
+# random header per request bypassed every rate limit.
+REST_FRAMEWORK = {  # noqa: F405
+    **REST_FRAMEWORK,  # noqa: F405
+    'NUM_PROXIES': config('NUM_PROXIES', default=1, cast=int),
+}
 
 # ---------------------------------------------------------------------------
 # Sentry — optional
@@ -121,3 +132,17 @@ if SENTRY_DSN:
         traces_sample_rate=config('SENTRY_TRACES_SAMPLE_RATE', default=0.1, cast=float),
         send_default_pii=False,  # this platform holds personal and payment data
     )
+
+# Payments must only ever talk to Paystack over TLS (PAYSTACK_API_BASE is a
+# local-simulation hook, never a production knob).
+if not PAYSTACK_API_BASE.startswith('https://'):  # noqa: F405
+    raise ImproperlyConfigured('PAYSTACK_API_BASE must be https in production.')  # noqa: F405
+
+# Every email link (verify, reset, bookings) and Paystack's return address are
+# built from FRONTEND_URL. Its default is http://localhost:3000, so a deploy
+# that forgets it emails customers links to nowhere. Refuse to start instead.
+if not FRONTEND_URL.startswith('https://') or 'localhost' in FRONTEND_URL or '127.0.0.1' in FRONTEND_URL:  # noqa: F405
+    raise ImproperlyConfigured(
+        'FRONTEND_URL must be the public https address of the website (it is used in every '
+        f'email link and the Paystack return address), not {FRONTEND_URL!r}.')  # noqa: F405
+FRONTEND_URL = FRONTEND_URL.rstrip('/')  # noqa: F405

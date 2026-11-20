@@ -109,12 +109,11 @@ jobs:
         run: |
           if grep -rnE '\b(float|Decimal)\(' apps/payments/ \
                --include='*.py' \
-               | grep -v 'hubtel.py' \
                | grep -v 'test_'; then
-            echo "::error::float/Decimal used in apps/payments outside the Hubtel boundary."
-            echo "Money is stored and calculated as integer pesewas. Decimal is"
-            echo "permitted only in hubtel.py, where the value crosses into the"
-            echo "provider's decimal string format."
+            echo "::error::float/Decimal used in apps/payments."
+            echo "Money is stored and calculated as integer pesewas. Paystack"
+            echo "takes and returns pesewas as integers too, so there is no"
+            echo "boundary where a decimal is needed (ADR-018)."
             exit 1
           fi
           echo "OK — no float money arithmetic."
