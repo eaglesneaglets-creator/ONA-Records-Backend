@@ -136,6 +136,21 @@ class User(AbstractBaseUser, PermissionsMixin):
                     and self.role == Role.CUSTOMER)
 
     @property
+    def must_send_identity_to_book(self) -> bool:
+        """
+        Booking needs an identity check sent to ONA
+        (BOOKING_REQUIRES_IDENTITY_CHECK), only customers book, and only while
+        the KYC service is set up — without it nobody could ever comply. The
+        one rule behind the booking gate, its banner (must_verify_identity)
+        and the journey's "Verify your identity" step.
+        """
+        from django.conf import settings
+
+        from apps.kyc import client as kyc
+        return bool(getattr(settings, 'BOOKING_REQUIRES_IDENTITY_CHECK', True)
+                    and self.role == Role.CUSTOMER and kyc.is_configured())
+
+    @property
     def full_name(self) -> str:
         return ' '.join(p for p in (self.first_name, self.last_name) if p)
 

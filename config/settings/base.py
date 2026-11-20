@@ -75,6 +75,13 @@ ADMIN_URL = config('ADMIN_URL', default='admin/')
 # a payment — needs an address that works. Staff-created customers confirm
 # by setting their password from the welcome email.
 BOOKING_REQUIRES_VERIFIED_EMAIL = config('BOOKING_REQUIRES_VERIFIED_EMAIL', default=True, cast=bool)
+
+# A customer must SEND an identity check (Ghana Card or passport + selfie)
+# before booking; they can book while ONA reviews it, and staff see the
+# status on the booking. Only applies while the KYC service is configured
+# (KYC_API_URL / KYC_API_KEY below), so a missing setup never blocks every
+# booking. See core.permissions.roles.IdentityCheckToBook.
+BOOKING_REQUIRES_IDENTITY_CHECK = config('BOOKING_REQUIRES_IDENTITY_CHECK', default=True, cast=bool)
 WSGI_APPLICATION = 'config.wsgi.application'
 ASGI_APPLICATION = 'config.asgi.application'
 

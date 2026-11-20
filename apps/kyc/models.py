@@ -68,3 +68,23 @@ def current_check(user) -> IdentityCheck | None:
 
 def is_verified(user) -> bool:
     return user.identity_checks.filter(status=IdentityStatus.APPROVED).exists()
+
+
+# Sent for review, or already decided in the person's favour: enough to book
+# (settings.BOOKING_REQUIRES_IDENTITY_CHECK). Draft, changes requested and
+# rejected are not — the person still has something to do.
+SENT_STATUSES = (IdentityStatus.SUBMITTED, IdentityStatus.IN_REVIEW, IdentityStatus.APPROVED)
+
+
+def has_sent_check(user) -> bool:
+    """
+    The latest check is with ONA or approved — or any earlier one was approved.
+
+    The latest attempt decides, so a check sent back for changes blocks again
+    until it is resent. An earlier approval still counts: a verified person
+    stays verified.
+    """
+    latest = current_check(user)
+    if latest is not None and latest.status in SENT_STATUSES:
+        return True
+    return is_verified(user)

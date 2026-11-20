@@ -145,6 +145,36 @@ class VerifiedEmailToBook(IsEmailVerified):
         return super().has_permission(request, view)
 
 
+class IdentityCheckToBook(BasePermission):
+    """
+    A customer books only once they have sent an identity check
+    (settings.BOOKING_REQUIRES_IDENTITY_CHECK).
+
+    "Sent" is enough: ONA reviews by hand, and making every new customer wait
+    on a person before booking would lose the booking. Staff see the status on
+    the booking and approve before the session. The rule itself lives on the
+    user (must_send_identity_to_book) and in apps.kyc.models.has_sent_check,
+    so the banner, the journey and this gate cannot disagree.
+
+    SAFE_METHODS pass: reading is not the risk.
+    """
+
+    message = ('Verify your identity before booking: send your Ghana Card or passport and a '
+               'selfie from the Verify identity page. It takes about three minutes, and you can '
+               'book while ONA checks it.')
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return True
+        u = request.user
+        if not (u and u.is_authenticated):
+            return False
+        if not u.must_send_identity_to_book:
+            return True
+        from apps.kyc.models import has_sent_check
+        return has_sent_check(u)
+
+
 class IsNotSuspended(BasePermission):
     """
     Deny suspended accounts on their very next request.

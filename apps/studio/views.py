@@ -35,7 +35,12 @@ from rest_framework.views import APIView
 from apps.notifications.dispatch import notify_booking
 from apps.notifications.models import Kind
 from core.models import AuditLog
-from core.permissions.roles import IsCustomer, IsOwnerOrONAAdmin, VerifiedEmailToBook
+from core.permissions.roles import (
+    IdentityCheckToBook,
+    IsCustomer,
+    IsOwnerOrONAAdmin,
+    VerifiedEmailToBook,
+)
 
 from .availability import MAX_RANGE_DAYS, availability
 from .money import with_paid
@@ -178,7 +183,8 @@ class BookingViewSet(mixins.CreateModelMixin, mixins.ListModelMixin,
 
     def get_permissions(self):
         if self.action == 'create':
-            return [IsAuthenticated(), IsCustomer(), VerifiedEmailToBook()]
+            # Email first: the identity page needs a working address to tell them the result.
+            return [IsAuthenticated(), IsCustomer(), VerifiedEmailToBook(), IdentityCheckToBook()]
         return super().get_permissions()
 
     def get_throttles(self):

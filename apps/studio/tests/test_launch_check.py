@@ -93,3 +93,13 @@ def test_a_paystack_test_key_blocks_production_only(ready, settings):
     assert any('TEST key' in m for lvl, m in collect() if lvl == 'BLOCKER')
     settings.ENVIRONMENT_NAME = 'staging'
     assert not any('TEST key' in m for lvl, m in collect())
+
+
+def test_an_identity_gate_that_cannot_work_is_a_warning(ready, settings):
+    settings.BOOKING_REQUIRES_IDENTITY_CHECK = True
+    settings.KYC_API_URL = ''
+    assert any('KYC_API_URL' in m for lvl, m in collect() if lvl == 'WARN')
+    settings.KYC_API_URL, settings.KYC_API_KEY = 'https://kyc.test', 'k'
+    assert not any('identity' in m.lower() for _, m in collect())
+    settings.BOOKING_REQUIRES_IDENTITY_CHECK = False
+    assert any('BOOKING_REQUIRES_IDENTITY_CHECK is off' in m for lvl, m in collect() if lvl == 'WARN')
