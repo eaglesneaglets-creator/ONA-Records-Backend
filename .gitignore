@@ -70,3 +70,6 @@ tmp/
 
 # Claude Code project folder (local tooling, never committed)
 /.claude/
+
+# Railway IaC SDK (installed for `railway config plan/apply` only)
+.railway/node_modules/
