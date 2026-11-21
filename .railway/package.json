@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Railway IaC SDK for railway.ts (plan/apply only; never installed by deploys).",
+  "devDependencies": {
+    "railway": "3.16.0"
+  }
+}
