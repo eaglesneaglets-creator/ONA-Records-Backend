@@ -4,6 +4,10 @@
 //   railway config plan  --environment Staging      # preview
 //   railway config apply --environment Staging      # then Production
 //
+// PowerShell: the SDK checks the CLI version by running $_, which PowerShell
+// never sets, so first point it at the real binary (CLI installed with npm):
+//   $env:_ = "$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"
+//
 // Railway does not read this file during deploys: `apply` writes these
 // values onto the services, and deploys use what is stored there. It
 // replaces railway.json, which Railway stops reading on 2026-12-01.

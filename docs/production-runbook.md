@@ -21,7 +21,9 @@ Build, start, health check and restart settings for the backend and worker live 
 `.railway/railway.ts` (the website's in its own repo's `.railway/railway.ts`). Railway does not
 read them during deploys: apply them with the Railway CLI v5 (`railway config plan`, then
 `railway config apply --environment Production`) after any change. They replace
-`railway.json`, which Railway stopped reading on 2026-12-01.
+`railway.json`, which Railway stopped reading on 2026-12-01. In PowerShell, first run
+`$env:_ = "$env:APPDATA\npm\node_modules\@railway\cli\bin\railway.exe"`: the SDK checks
+the CLI version by running `$_`, which PowerShell never sets.
 
 Point the company domain at the frontend (e.g. `onarecords.com`) and an API
 subdomain at the backend (e.g. `api.onarecords.com`).
