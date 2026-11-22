@@ -44,6 +44,7 @@ FOLDERS = {
     'deliverable': 'deliverables',
     'message_attachment': 'messages',
     'studio_photo': 'studio',
+    'site_media': 'site',
     'misc': 'misc',
 }
 
@@ -110,6 +111,15 @@ UPLOAD_CONTEXTS = {
         'folder': 'studio_photo',
         'max_bytes': 10 * 1024 * 1024,
         'allowed_mime': {'image/jpeg', 'image/png', 'image/webp'},
+    },
+
+    # The public website's images (hero, gallery), uploaded by ONA admins.
+    # apps/content/media.py re-encodes every one to WebP before it gets
+    # here, so only WebP is stored.
+    'site_media': {
+        'folder': 'site_media',
+        'max_bytes': 10 * 1024 * 1024,
+        'allowed_mime': {'image/webp'},
     },
 }
 
@@ -231,6 +241,28 @@ def delete(key: str) -> bool:
     except Exception:
         logger.exception('Bucket delete failed for %s', key)
         return False
+
+
+def open_stream(key: str):
+    """
+    (body, content_type, length) for a stored file, or None when it cannot
+    be read. `body` is a file-like stream: hand it to a FileResponse so the
+    bytes go to the client without being held in memory.
+
+    For files the public site serves through the API (apps/content media),
+    where a presigned link would expire inside a cache.
+    """
+    if not key:
+        return None
+    try:
+        client = _client()
+        if client is None:
+            return None
+        obj = client.get_object(Bucket=settings.S3_BUCKET, Key=key)
+        return obj['Body'], obj.get('ContentType') or 'application/octet-stream', obj.get('ContentLength')
+    except Exception:
+        logger.exception('Could not read %s from the bucket', key)
+        return None
 
 
 def url_for(key: str, *, expires: int = None, download_name: str = None) -> str:

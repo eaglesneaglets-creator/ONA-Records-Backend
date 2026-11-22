@@ -150,6 +150,10 @@ REST_FRAMEWORK = {
         # Password changes: slows guessing the current password from a
         # signed-in (possibly stolen) session.
         'account': '20/hour',
+        # Website images. Almost every request comes from the frontend's image
+        # optimiser (one IP), which caches each size, so this is generous; it
+        # only stops someone pulling the library in a loop.
+        'media': '6000/hour',
     },
     'EXCEPTION_HANDLER': 'core.exceptions.handler.api_exception_handler',
 }

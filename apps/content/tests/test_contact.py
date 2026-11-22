@@ -22,8 +22,13 @@ def staff(django_user_model):
 def test_public_page_gets_blank_fields_until_staff_fill_them():
     r = APIClient().get(PUBLIC)
     assert r.status_code == 200
+    # ONA's social profiles are seeded (migration 0006); TikTok and YouTube wait for staff.
     assert r.json() == {'phone': '', 'whatsapp': '', 'email': '', 'address': '',
-                        'directions_url': ''}
+                        'directions_url': '',
+                        'instagram_url': 'https://www.instagram.com/onaplay/',
+                        'facebook_url': 'https://www.facebook.com/onastudiosgh/',
+                        'linkedin_url': 'https://www.linkedin.com/company/ona-records/',
+                        'tiktok_url': '', 'youtube_url': ''}
 
 
 def test_staff_update_is_validated_and_audited(staff):
