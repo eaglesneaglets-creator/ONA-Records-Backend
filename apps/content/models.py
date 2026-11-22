@@ -93,11 +93,35 @@ class MediaAsset(UUIDPrimaryKeyMixin, TimestampMixin):
         settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+',
     )
 
+    # Enhancing (AI upscaling) never changes this file: it makes a new asset
+    # whose enhanced_from points here, and moves the site's uses onto it.
+    class Enhance(models.TextChoices):
+        NONE = '', 'Not requested'
+        PENDING = 'pending', 'Enhancing'
+        DONE = 'done', 'Enhanced'
+        FAILED = 'failed', 'Failed'
+
+    enhanced_from = models.ForeignKey(
+        'self', null=True, blank=True, on_delete=models.SET_NULL, related_name='enhancements',
+        help_text='The photo this one was upscaled from.',
+    )
+    enhance_status = models.CharField(max_length=10, choices=Enhance.choices, default='', blank=True)
+    enhance_error = models.CharField(max_length=200, blank=True)
+    enhance_requested_at = models.DateTimeField(null=True, blank=True)
+
+    #: Below this on its long side a photo looks soft on a laptop or a
+    #: high-density phone screen (a full-width hero wants ~2400 px).
+    SMALL_EDGE = 1600
+
     class Meta:
         ordering = ('-created_at',)
 
     def __str__(self) -> str:
         return self.alt_text or str(self.pk)
+
+    @property
+    def is_small(self) -> bool:
+        return max(self.width, self.height) < self.SMALL_EDGE
 
     def used_by(self) -> list[str]:
         """Where the site shows this image, in words; empty when it can be deleted."""

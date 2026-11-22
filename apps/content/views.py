@@ -11,8 +11,14 @@ GET /api/v1/content/media/<id>/   a website image (cached for good: never change
 /api/v1/admin/testimonials/       the quoted reviews, audited
 """
 
+from datetime import timedelta
+
+from django.conf import settings
+from django.db import transaction
 from django.http import FileResponse, Http404
+from django.utils import timezone
 from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import APIException
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -24,6 +30,7 @@ from core import storage
 from core.models import AuditLog
 from core.permissions.roles import IsONAAdmin
 
+from . import enhance as enhancer
 from .media import process_upload
 from .models import ContactDetails, Faq, GalleryImage, MediaAsset, SiteContent, Testimonial
 from .serializers import (
@@ -250,6 +257,61 @@ class MediaAdminViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins
         asset.delete()
         storage.delete(key)  # a failed delete leaves an orphan, not a broken page
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'])
+    def enhance(self, request, pk=None):
+        """
+        Queue an AI upscale of a small photo (apps/content/tasks.py). 202 with
+        the photo marked pending; the library polls until it is done or failed.
+        """
+        asset = self.get_object()
+        if not enhancer.configured():
+            raise EnhanceUnavailable()
+        if not asset.is_small:
+            raise AlreadySharp()
+        now = timezone.now()
+        # A pending request older than this is a lost job (a worker restart): allow a retry.
+        if (asset.enhance_status == MediaAsset.Enhance.PENDING and asset.enhance_requested_at
+                and asset.enhance_requested_at > now - timedelta(minutes=15)):
+            raise EnhancePending()
+        used = AuditLog.objects.filter(action='content.media_enhance_requested',
+                                       created_at__gte=now - timedelta(hours=24)).count()
+        if used >= settings.MEDIA_ENHANCE_DAILY_LIMIT:
+            raise EnhanceLimit()
+        asset.enhance_status = MediaAsset.Enhance.PENDING
+        asset.enhance_error = ''
+        asset.enhance_requested_at = now
+        asset.save(update_fields=['enhance_status', 'enhance_error', 'enhance_requested_at', 'updated_at'])
+        AuditLog.record('content.media_enhance_requested', actor=request.user, target=asset, request=request,
+                        size=f'{asset.width}x{asset.height}')
+        from .tasks import enhance_media
+        asset_id, user_id = str(asset.pk), str(request.user.pk)
+        transaction.on_commit(lambda: enhance_media.delay(asset_id, user_id))
+        return Response(self.get_serializer(asset).data, status=status.HTTP_202_ACCEPTED)
+
+
+class EnhanceUnavailable(APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_code = 'enhance_unavailable'
+    default_detail = 'Photo enhancing is not set up yet. Add REPLICATE_API_TOKEN to the backend and worker.'
+
+
+class AlreadySharp(APIException):
+    status_code = status.HTTP_400_BAD_REQUEST
+    default_code = 'already_sharp'
+    default_detail = 'This photo is already large enough to look sharp; enhancing would not help.'
+
+
+class EnhancePending(APIException):
+    status_code = status.HTTP_409_CONFLICT
+    default_code = 'enhance_pending'
+    default_detail = 'This photo is already being enhanced.'
+
+
+class EnhanceLimit(APIException):
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    default_code = 'enhance_limit'
+    default_detail = "Today's photo-enhancing limit is used up. Try again tomorrow."
 
 
 class _AuditedCrud(viewsets.ModelViewSet):

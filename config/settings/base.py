@@ -262,6 +262,17 @@ HUBTEL_SMS_CLIENT_ID = config('HUBTEL_SMS_CLIENT_ID', default='')
 HUBTEL_SMS_CLIENT_SECRET = config('HUBTEL_SMS_CLIENT_SECRET', default='')
 HUBTEL_SMS_SENDER_ID = config('HUBTEL_SMS_SENDER_ID', default='ONARecords')
 
+# Photo enhancing (AI upscaling of small website photos) — Real-ESRGAN on
+# Replicate, run by the worker when an admin asks (apps/content/enhance.py).
+# Empty token = the Enhance button says it is not set up. The token must be
+# on the backend (which checks it) and the worker (which calls Replicate).
+REPLICATE_API_TOKEN = config('REPLICATE_API_TOKEN', default='')
+REPLICATE_UPSCALE_MODEL = config('REPLICATE_UPSCALE_MODEL', default='nightmareai/real-esrgan')
+# Pin a model version (64-hex id); blank = the model's latest version.
+REPLICATE_UPSCALE_VERSION = config('REPLICATE_UPSCALE_VERSION', default='')
+# Every enhance is a paid call; this caps a runaway day (a stuck button, a script).
+MEDIA_ENHANCE_DAILY_LIMIT = config('MEDIA_ENHANCE_DAILY_LIMIT', default=40, cast=int)
+
 # ---------------------------------------------------------------------------
 # File storage: an S3-compatible bucket (Railway Storage Buckets)
 # ---------------------------------------------------------------------------

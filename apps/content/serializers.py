@@ -118,11 +118,14 @@ def media_payload(asset: MediaAsset | None) -> dict | None:
 class MediaAssetAdminSerializer(serializers.ModelSerializer):
     src = serializers.SerializerMethodField()
     used_by = serializers.SerializerMethodField()
+    is_small = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = MediaAsset
-        fields = ('id', 'src', 'width', 'height', 'bytes', 'alt_text', 'used_by', 'created_at')
-        read_only_fields = ('id', 'src', 'width', 'height', 'bytes', 'used_by', 'created_at')
+        fields = ('id', 'src', 'width', 'height', 'bytes', 'alt_text', 'used_by', 'created_at',
+                  'is_small', 'enhance_status', 'enhance_error', 'enhanced_from')
+        read_only_fields = ('id', 'src', 'width', 'height', 'bytes', 'used_by', 'created_at',
+                            'is_small', 'enhance_status', 'enhance_error', 'enhanced_from')
 
     def get_src(self, obj):
         return reverse('content:media', args=[obj.pk])
