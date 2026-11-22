@@ -32,6 +32,8 @@ PUBLIC = [
     r'^api/v1/content/faqs/$',
     r'^api/v1/content/contact/$',   # the public contact page; read-only
     r'^api/v1/content/rules/$',     # deposit, hold, notice etc. the site shows; read-only
+    r'^api/v1/content/site/$',      # homepage hero, gallery, quoted reviews; read-only
+    r'^api/v1/content/media/[0-9a-f-]+/$',  # website images (hero, gallery); read-only bytes
 ]
 
 

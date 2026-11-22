@@ -69,8 +69,10 @@ LOGGING['root']['level'] = 'DEBUG'  # noqa: F405
 # runs. Local only — staging and production keep the real limits.
 REST_FRAMEWORK = {
     **REST_FRAMEWORK,
-    'DEFAULT_THROTTLE_RATES': {'anon': '2000/hour', 'user': '5000/hour',
+    # On top of base's rates, so a scope added there is never missing here.
+    'DEFAULT_THROTTLE_RATES': {**REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'],
+                               'anon': '2000/hour', 'user': '5000/hour',
                                'public': '20000/hour', 'booking': '2000/hour',
                                'payment': '2000/hour', 'kyc': '2000/hour',
-                               'account': '2000/hour'},
+                               'account': '2000/hour', 'media': '20000/hour'},
 }

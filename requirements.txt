@@ -19,6 +19,8 @@ celery==5.6.3
 redis==8.1.0
 
 boto3==1.43.127
+# Website images: validate, re-encode to WebP, strip EXIF (apps/content/media.py).
+Pillow==12.3.0
 requests==2.34.2
 
 gunicorn==26.0.0

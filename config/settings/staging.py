@@ -113,7 +113,10 @@ EMAIL_SUBJECT_PREFIX = '[STAGING] '
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {  # noqa: F405
     **REST_FRAMEWORK,  # noqa: F405
+    # On top of base's rates, never instead of them: a scope added in base
+    # (e.g. 'media') and missing here made every request to it a 500.
     'DEFAULT_THROTTLE_RATES': {
+        **REST_FRAMEWORK['DEFAULT_THROTTLE_RATES'],  # noqa: F405
         'anon': '200/hour',
         'user': '2000/hour',
         'public': '5000/hour',
