@@ -30,18 +30,19 @@ MAX_PIXELS = 60_000_000
 WEBP_QUALITY = 82
 
 
-def process_upload(file) -> dict:
+def process_upload(file, *, max_bytes: int = MAX_UPLOAD_BYTES) -> dict:
     """
     Validate, re-encode and store an uploaded image.
 
     Returns {'key', 'bytes', 'width', 'height', 'content_type'}. Raises
     ValidationError (a 400 for the admin) on anything that is not a usable
-    image.
+    image. `max_bytes` is raised only for the enhancer's own output: an
+    upscaled PNG is large before it is re-encoded to WebP.
     """
     if not file:
         raise ValidationError({'file': 'Choose an image to upload.'})
-    if getattr(file, 'size', 0) > MAX_UPLOAD_BYTES:
-        raise ValidationError({'file': f'That image is too large. The limit is {MAX_UPLOAD_BYTES // (1024 * 1024)} MB.'})
+    if getattr(file, 'size', 0) > max_bytes:
+        raise ValidationError({'file': f'That image is too large. The limit is {max_bytes // (1024 * 1024)} MB.'})
     if getattr(file, 'content_type', None) not in ACCEPTED:
         raise ValidationError({'file': 'Upload a JPEG, PNG or WebP image.'})
 
